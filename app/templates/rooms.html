@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="roomsData()" x-init="init()" class="space-y-6">
+    <div class="flex justify-between items-center mb-2">
+        <h2 class="text-2xl font-bold text-gray-100">Mis Salas</h2>
+        <button @click="showModal = true" class="bg-primary hover:bg-primaryHover text-white px-5 py-2 rounded-full font-semibold shadow-lg shadow-purple-900/50 transition">
+            + Nueva
+        </button>
+    </div>
+
+    <div x-show="loading" class="text-center py-10 text-gray-400 font-medium animate-pulse">Cargando salas...</div>
+
+    <div class="flex flex-col gap-4" x-show="!loading" x-cloak>
+        <template x-for="room in rooms" :key="room.id">
+            <a :href="`/rooms/${room.id}`" class="block bg-surface p-5 rounded-2xl border border-gray-800 hover:border-gray-700 hover:bg-[#23252e] transition group">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-100 group-hover:text-primary transition" x-text="room.name"></h3>
+                        <p class="text-sm text-gray-400 mt-1" x-text="'Creada el ' + new Date(room.created_at).toLocaleDateString()"></p>
+                    </div>
+                    <div class="bg-purple-600/20 p-3 rounded-full text-primary group-hover:bg-primary group-hover:text-white transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                    </div>
+                </div>
+            </a>
+        </template>
+        
+        <div x-show="rooms.length === 0" class="col-span-full text-center text-gray-500 py-12 bg-surface rounded-3xl border border-dashed border-gray-700">
+            <div class="bg-gray-800/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🎳</div>
+            <p>No perteneces a ninguna sala aún.<br>¡Crea una para empezar!</p>
+        </div>
+    </div>
+
+    <!-- Modal Crear Sala -->
+    <div x-show="showModal" class="fixed inset-0 bg-background/90 backdrop-blur-sm flex items-center justify-center p-4 z-50" x-cloak>
+        <div class="bg-surface rounded-3xl p-6 w-full max-w-sm border border-gray-800 shadow-2xl" @click.away="showModal = false">
+            <h3 class="text-xl font-bold mb-6 text-gray-100">Crear Nueva Sala</h3>
+            <input x-model="newRoomName" type="text" placeholder="Nombre de la sala (ej. Bolera Centro)" class="w-full p-4 mb-6 bg-background rounded-2xl border border-gray-700 text-gray-100 placeholder-gray-500 outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition">
+            <div class="flex justify-end space-x-3">
+                <button @click="showModal = false" class="px-5 py-3 text-gray-400 hover:text-white font-medium">Cancelar</button>
+                <button @click="createRoom" :disabled="!newRoomName || creating" class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-full hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 shadow-lg shadow-purple-900/50">
+                    Crear Sala
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function roomsData() {
+    return {
+        rooms: [],
+        loading: true,
+        showModal: false,
+        newRoomName: '',
+        creating: false,
+        async init() {
+            checkAuth();
+            await this.loadRooms();
+        },
+        async loadRooms() {
+            try {
+                const res = await fetch('/api/rooms', {
+                    headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+                });
+                if (res.status === 401) logout();
+                this.rooms = await res.json();
+            } catch (e) {
+                console.error(e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        async createRoom() {
+            this.creating = true;
+            try {
+                const res = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${getAuthToken()}`
+                    },
+                    body: JSON.stringify({ name: this.newRoomName })
+                });
+                if (res.ok) {
+                    this.showModal = false;
+                    this.newRoomName = '';
+                    await this.loadRooms();
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                this.creating = false;
+            }
+        }
+    }
+}
+</script>
+<style> [x-cloak] { display: none !important; } </style>
+{% endblock %}

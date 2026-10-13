@@ -1,0 +1,597 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="roomDetail({{ room_id }})" x-init="init()" class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-primary truncate pr-2"
+            x-text="roomName"></h2>
+        <div class="flex space-x-2 shrink-0">
+            <button x-show="myRole === 'OWNER'" @click="showInviteModal = true"
+                class="bg-surface hover:bg-gray-800 border border-gray-700 text-gray-200 p-2 rounded-full shadow transition"
+                x-cloak title="Invitar">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                </svg>
+            </button>
+            <a x-show="myRole !== 'VIEWER'" href="/rooms/{{ room_id }}/games/new"
+                class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white p-2 px-4 rounded-full shadow-lg shadow-purple-900/50 font-bold flex items-center transition"
+                x-cloak>
+                <svg class="w-5 h-5 mr-1 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                <span class="hidden sm:inline">+ Partida</span>
+                <span class="sm:hidden">Partida</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Pestañas (Estilo Pills) -->
+    <div class="flex bg-surface p-1 rounded-2xl border border-gray-800 overflow-x-auto snap-x hide-scrollbar">
+        <button @click="activeTab = 'leaderboard'"
+            :class="activeTab === 'leaderboard' ? 'bg-gray-800 text-white shadow' : 'text-gray-400 hover:text-gray-200'"
+            class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Top</button>
+        <button @click="activeTab = 'history'"
+            :class="activeTab === 'history' ? 'bg-gray-800 text-white shadow' : 'text-gray-400 hover:text-gray-200'"
+            class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Historial</button>
+        <button @click="activeTab = 'stats'; loadStatsChart()"
+            :class="activeTab === 'stats' ? 'bg-gray-800 text-white shadow' : 'text-gray-400 hover:text-gray-200'"
+            class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Gráfico</button>
+    </div>
+
+    <!-- Leaderboard -->
+    <div x-show="activeTab === 'leaderboard'" class="space-y-3">
+        <template x-for="(entry, index) in leaderboard" :key="entry.user_id">
+            <div class="bg-surface rounded-2xl p-4 border border-gray-800 flex items-center shadow-sm">
+
+                <!-- Posición / Medallas -->
+                <div class="w-10 flex-shrink-0 text-center font-bold text-xl"
+                    :class="{'text-yellow-400': index === 0, 'text-gray-300': index === 1, 'text-amber-600': index === 2, 'text-gray-500': index > 2}">
+                    <span x-text="'#' + entry.rank"></span>
+                </div>
+
+                <!-- Avatar & Info -->
+                <div class="flex-1 flex items-center ml-2 min-w-0">
+                    <div
+                        class="w-10 h-10 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-primary font-bold flex-shrink-0">
+                        <span x-text="entry.full_name.charAt(0).toUpperCase()"></span>
+                    </div>
+                    <div class="ml-3 truncate">
+                        <div class="font-bold text-gray-100 flex items-center">
+                            <span class="truncate" x-text="entry.full_name"></span>
+
+                            <!-- Context Menu (OWNER only) -->
+                            <div x-show="myRole === 'OWNER' && entry.user_id !== currentUserId"
+                                class="relative ml-2 shrink-0" x-data="{ open: false }" x-cloak>
+                                <button @click="open = !open"
+                                    class="text-gray-500 hover:text-gray-300 focus:outline-none">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                                        </path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                </button>
+                                <div x-show="open" @click.away="open = false"
+                                    class="absolute left-0 top-full mt-2 w-40 bg-surface border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                                    <button @click="changeRole(entry.user_id, 'EDITOR'); open = false"
+                                        class="block w-full text-left px-4 py-2 hover:bg-gray-800 text-sm text-gray-200">Hacer
+                                        Editor</button>
+                                    <button @click="changeRole(entry.user_id, 'VIEWER'); open = false"
+                                        class="block w-full text-left px-4 py-2 hover:bg-gray-800 text-sm text-red-400">Quitar
+                                        permisos</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                            <span x-text="getRoleName(entry.user_id)"></span>
+                            <span>•</span>
+                            <span>Plenos: <span x-text="entry.total_strikes"></span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Score -->
+                <div class="ml-4 flex-shrink-0 text-right">
+                    <div class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-400 to-primary"
+                        x-text="entry.total_score"></div>
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Pts</div>
+                </div>
+            </div>
+        </template>
+
+        <div x-show="leaderboard.length === 0"
+            class="p-8 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-700">
+            Aún no hay puntuaciones.
+        </div>
+    </div>
+
+    <!-- Historial de Partidas -->
+    <div x-show="activeTab === 'history'" class="space-y-4">
+        <template x-for="game in games" :key="game.id">
+            <div class="bg-surface border border-gray-800 rounded-2xl p-5 shadow-sm">
+                <div class="flex justify-between items-start" :class="game.isDetailed ? 'cursor-pointer' : ''"
+                    @click="if(game.isDetailed) game.expanded = !game.expanded">
+                    <div class="flex-1">
+                        <div class="font-bold text-gray-100 flex items-center gap-2">
+                            <span x-text="new Date(game.played_at).toLocaleDateString()"></span>
+                            <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-medium"
+                                x-text="new Date(game.played_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></span>
+                        </div>
+                        <div class="text-sm text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                            <span class="flex items-center gap-1">🏆 <span class="font-bold text-primary"
+                                    x-text="game.total_score + ' pts'"></span></span>
+                            <span class="flex items-center gap-1">🎳 <span class="font-bold text-gray-200"
+                                    x-text="game.total_strikes"></span></span>
+                            <span class="flex items-center gap-1">🔲 <span class="font-bold text-gray-200"
+                                    x-text="game.total_spares"></span></span>
+                        </div>
+                        <div x-show="!game.isDetailed"
+                            class="mt-2 text-[10px] font-semibold text-purple-400/70 uppercase tracking-wide">
+                            • Modo Rápido
+                        </div>
+
+                        <!-- Mini Avatars/Scores -->
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <template x-for="sc in game.scores">
+                                <div
+                                    class="flex items-center bg-gray-800/50 border border-gray-700 rounded-full px-2 py-1">
+                                    <div class="w-5 h-5 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white mr-2"
+                                        x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
+                                    <span class="text-xs text-gray-200 font-medium mr-1"
+                                        x-text="sc.user.full_name"></span>
+                                    <span class="text-xs text-primary font-bold" x-text="sc.score"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div x-show="game.isDetailed"
+                        class="bg-gray-800 p-2 rounded-full text-gray-400 hover:text-white transition ml-2">
+                        <svg x-show="!game.expanded" class="w-5 h-5" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7">
+                            </path>
+                        </svg>
+                        <svg x-show="game.expanded" class="w-5 h-5" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+
+                <div x-show="game.isDetailed && game.expanded" class="mt-5 border-t border-gray-800 pt-5" x-transition>
+                    <div class="space-y-6">
+                        <template x-for="sc in game.scores">
+                            <div class="overflow-x-auto pb-2 hide-scrollbar">
+                                <div class="font-bold text-gray-200 mb-3 flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-xs text-white"
+                                        x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
+                                    <span x-text="sc.user.full_name"></span>
+                                    <span class="text-primary" x-text="sc.score + ' pts'"></span>
+                                </div>
+                                <!-- Traditional Scoreboard Display -->
+                                <table
+                                    class="text-center text-xs font-mono border-collapse border border-gray-700 bg-background w-max">
+                                    <thead>
+                                        <tr class="bg-gray-800 text-gray-400">
+                                            <template x-for="f in 10">
+                                                <th class="border border-gray-700 px-3 py-1.5" x-text="f"></th>
+                                            </template>
+                                        </tr>
+                                    </thead>
+                                    <tbody x-show="sc.frames_data && sc.frames_data.length">
+                                        <tr>
+                                            <template x-for="(frame, i) in sc.frames_data">
+                                                <td class="border border-gray-700 p-0 align-top text-gray-200 w-12">
+                                                    <div class="flex border-b border-gray-700 h-6">
+                                                        <div class="flex-1 border-r border-gray-700 flex items-center justify-center"
+                                                            x-text="frame.roll1"></div>
+                                                        <div class="flex-1 flex items-center justify-center"
+                                                            :class="{'border-r border-gray-700': i === 9}"
+                                                            x-text="frame.roll2"></div>
+                                                        <template x-if="i === 9">
+                                                            <div class="flex-1 flex items-center justify-center text-primary"
+                                                                x-text="frame.roll3"></div>
+                                                        </template>
+                                                    </div>
+                                                    <div class="h-6 flex items-center justify-center font-bold text-primary"
+                                                        x-text="frame.score"></div>
+                                                </td>
+                                            </template>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <div x-show="!sc.frames_data || !sc.frames_data.length"
+                                    class="text-xs text-gray-500 mt-2">Detalle no disponible.</div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+        <div x-show="games.length === 0"
+            class="p-8 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-700">
+            Aún no hay histórico de partidas.
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div x-show="activeTab === 'stats'" class="space-y-4">
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" x-show="statsData">
+            <!-- Highest Score -->
+            <div
+                class="bg-gradient-to-br from-yellow-600/20 to-surface rounded-2xl p-5 border border-yellow-500/20 shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 text-6xl opacity-10">🏆</div>
+                <div class="text-xs font-bold text-yellow-500 uppercase tracking-wider mb-2">Récord de Sala</div>
+                <template x-if="statsData?.records?.highest_score">
+                    <div>
+                        <div class="text-4xl font-black text-gray-100" x-text="statsData.records.highest_score.score">
+                        </div>
+                        <div class="text-sm text-gray-400 mt-1 flex items-center gap-1">
+                            <span>por</span> <span class="font-bold text-gray-200"
+                                x-text="statsData.records.highest_score.username"></span>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!statsData?.records?.highest_score">
+                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
+                </template>
+            </div>
+
+            <!-- Strike King -->
+            <div
+                class="bg-gradient-to-br from-purple-600/20 to-surface rounded-2xl p-5 border border-purple-500/20 shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 text-6xl opacity-10">🎯</div>
+                <div class="text-xs font-bold text-primary uppercase tracking-wider mb-2">Rey del Pleno</div>
+                <template x-if="statsData?.records?.strike_king">
+                    <div>
+                        <div class="text-4xl font-black text-gray-100"
+                            x-text="statsData.records.strike_king.avg_strikes"></div>
+                        <div class="text-sm text-gray-400 mt-1 flex items-center gap-1">
+                            <span class="font-bold text-gray-200"
+                                x-text="statsData.records.strike_king.username"></span> <span
+                                class="text-xs">plenos/partida</span>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!statsData?.records?.strike_king">
+                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
+                </template>
+            </div>
+
+            <!-- Most Fit -->
+            <div
+                class="bg-gradient-to-br from-green-600/20 to-surface rounded-2xl p-5 border border-green-500/20 shadow-sm relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 text-6xl opacity-10">📈</div>
+                <div class="text-xs font-bold text-success uppercase tracking-wider mb-2">Más en Forma</div>
+                <template x-if="statsData?.records?.most_fit">
+                    <div>
+                        <div class="text-2xl font-black text-gray-100 truncate"
+                            x-text="statsData.records.most_fit.username"></div>
+                        <div class="text-sm text-success font-semibold mt-1 flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                            </svg>
+                            +<span x-text="statsData.records.most_fit.improvement"></span> pts
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!statsData?.records?.most_fit">
+                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Gráfico -->
+        <div class="bg-surface rounded-2xl p-4 sm:p-6 border border-gray-800 shadow-sm">
+            <h3 class="font-bold text-sm text-gray-300 uppercase tracking-wider mb-6 text-center">Evolución de
+                Puntuaciones</h3>
+            <div class="relative h-[300px] sm:h-[400px] w-full">
+                <canvas id="statsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Invitar -->
+    <div x-show="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+        x-cloak>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">Añadir Jugador</h3>
+            <div x-show="inviteError" class="bg-red-100 text-red-700 p-2 text-sm rounded mb-4" x-text="inviteError">
+            </div>
+            <input x-model="inviteUsername" type="text" placeholder="Nombre de usuario"
+                class="w-full p-2 mb-4 rounded border dark:bg-gray-700 dark:border-gray-600 outline-none focus:ring-2 focus:ring-primary">
+            <div class="flex justify-end space-x-2">
+                <button @click="showInviteModal = false"
+                    class="px-4 py-2 text-gray-500 hover:text-gray-700">Cancelar</button>
+                <button @click="inviteUser" :disabled="!inviteUsername || inviting"
+                    class="px-4 py-2 bg-primary text-white rounded hover:bg-blue-600 disabled:opacity-50">
+                    Añadir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function roomDetail(roomId) {
+        return {
+            roomId: roomId,
+            activeTab: 'leaderboard',
+            leaderboard: [],
+            games: [],
+            currentUserId: null,
+            myRole: 'VIEWER',
+            members: [],
+            statsData: null,
+            chartInstance: null,
+            showInviteModal: false,
+            inviteUsername: '',
+            inviting: false,
+            inviteError: '',
+            roomName: 'Cargando...',
+            async init() {
+                checkAuth();
+                await this.loadRoom();
+                await this.loadMe();
+                await this.loadMembers();
+                await this.loadLeaderboard();
+                await this.loadGames();
+            },
+            async loadRoom() {
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}`, { headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.roomName = data.name;
+                    } else if (res.status === 401) {
+                        logout();
+                    }
+                } catch (e) { console.error(e); }
+            },
+            async loadMe() {
+                try {
+                    const res = await fetch('/api/users/me', { headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.currentUserId = data.id;
+                    }
+                } catch (e) { console.error(e); }
+            },
+            async loadMembers() {
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/members`, { headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
+                    if (res.ok) {
+                        this.members = await res.json();
+                        const me = this.members.find(m => m.user_id === this.currentUserId);
+                        if (me) this.myRole = me.role;
+                    }
+                } catch (e) { console.error(e); }
+            },
+            getRoleName(userId) {
+                const m = this.members.find(m => m.user_id === userId);
+                if (!m) return '';
+                const labels = { 'OWNER': 'Propietario', 'EDITOR': 'Editor', 'VIEWER': 'Lector' };
+                return labels[m.role] || m.role;
+            },
+            async changeRole(userId, newRole) {
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/members/${userId}`, {
+                        method: 'PATCH',
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ role: newRole })
+                    });
+                    if (res.ok) {
+                        await this.loadMembers();
+                    } else {
+                        const err = await res.json();
+                        alert(err.detail || 'Error al cambiar rol');
+                    }
+                } catch (e) { console.error(e); }
+            },
+            async loadLeaderboard() {
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/leaderboard`, {
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+                    });
+                    if (res.status === 401) logout();
+                    if (res.ok) {
+                        this.leaderboard = await res.json();
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            },
+            async loadGames() {
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/games`, {
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+                    });
+                    if (res.ok) {
+                        let data = await res.json();
+                        data.forEach(game => {
+                            game.expanded = false;
+                            game.total_score = game.scores.reduce((sum, sc) => sum + sc.score, 0);
+                            game.total_strikes = game.scores.reduce((sum, sc) => sum + sc.strikes, 0);
+                            game.total_spares = game.scores.reduce((sum, sc) => sum + sc.spares, 0);
+                            // A game is detailed if AT LEAST ONE score has frames_data
+                            game.isDetailed = game.scores.some(sc => sc.frames_data && sc.frames_data.length > 0);
+                        });
+                        this.games = data;
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            },
+            async loadStatsChart() {
+                if (this.statsData) return; // Ya cargado
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/stats`, {
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+                    });
+                    if (res.ok) {
+                        this.statsData = await res.json();
+                        this.renderChart();
+                    }
+                } catch (e) {
+                    console.error("Error al cargar stats:", e);
+                }
+            },
+            renderChart() {
+                const ctx = document.getElementById('statsChart').getContext('2d');
+                if (this.chartInstance) {
+                    this.chartInstance.destroy();
+                }
+
+                // Custom neon colors mapping
+                const colors = [
+                    '#8b5cf6', // primary purple
+                    '#ec4899', // pink
+                    '#06b6d4', // cyan
+                    '#10b981', // green
+                    '#f59e0b', // amber
+                    '#ef4444', // red
+                    '#3b82f6'  // blue
+                ];
+
+                const datasets = this.statsData.players.map((player, index) => {
+                    const color = colors[index % colors.length];
+
+                    // create gradient fill
+                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    gradient.addColorStop(0, color + '66'); // 40% opacity
+                    gradient.addColorStop(1, color + '00'); // 0% opacity
+
+                    return {
+                        label: player.username,
+                        data: player.scores,
+                        borderColor: color,
+                        backgroundColor: gradient,
+                        borderWidth: 3,
+                        tension: 0.4,
+                        spanGaps: true,
+                        pointBackgroundColor: '#1c1e26', // match surface
+                        pointBorderColor: color,
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: color,
+                        fill: true,
+                        customDetails: player.details
+                    };
+                });
+
+                Chart.defaults.color = '#9ca3af'; // gray-400
+                Chart.defaults.font.family = 'Inter, sans-serif';
+
+                this.chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: this.statsData.labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 8,
+                                    padding: 20
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: '#0b0c10',
+                                titleColor: '#f3f4f6',
+                                bodyColor: '#d1d5db',
+                                borderColor: '#1f2937',
+                                borderWidth: 1,
+                                padding: 12,
+                                cornerRadius: 8,
+                                callbacks: {
+                                    label: function (context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y + ' pts';
+                                        }
+                                        return label;
+                                    },
+                                    afterLabel: function (context) {
+                                        const details = context.dataset.customDetails[context.dataIndex];
+                                        if (details) {
+                                            return `Plenos: ${details.strikes} | Semiplenos: ${details.spares}`;
+                                        }
+                                        return '';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    color: '#1f2937', // gray-800
+                                    drawBorder: false
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                max: 300,
+                                grid: {
+                                    color: '#1f2937', // gray-800
+                                    drawBorder: false
+                                }
+                            }
+                        }
+                    }
+                });
+            },
+            async inviteUser() {
+                this.inviting = true;
+                this.inviteError = '';
+                try {
+                    const res = await fetch(`/api/rooms/${this.roomId}/members`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${getAuthToken()}`
+                        },
+                        body: JSON.stringify({ username: this.inviteUsername })
+                    });
+
+                    if (res.ok) {
+                        this.showInviteModal = false;
+                        this.inviteUsername = '';
+                        await this.loadLeaderboard(); // Recargar para ver al nuevo miembro con 0 puntos
+                    } else {
+                        const data = await res.json();
+                        this.inviteError = data.detail || 'Error al añadir';
+                    }
+                } catch (e) {
+                    this.inviteError = 'Error de conexión';
+                } finally {
+                    this.inviting = false;
+                }
+            }
+        }
+    }
+</script>
+<style>
+    [x-cloak] {
+        display: none !important;
+    }
+</style>
+{% endblock %}
