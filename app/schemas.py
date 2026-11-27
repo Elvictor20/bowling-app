@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, model_validator
 from typing import List, Optional, Any
 from datetime import datetime
 from .models import RoleEnum
@@ -68,10 +68,21 @@ class RoomMemberResponse(BaseModel):
 class GameScoreCreate(BaseModel):
     user_id: int
     score: int = Field(ge=0, le=300)
-    strikes: int = Field(ge=0, default=0)
-    spares: int = Field(ge=0, default=0)
+    strikes: int = Field(ge=0, le=12, default=0)
+    spares: int = Field(ge=0, le=10, default=0)
     nickname: Optional[str] = None
     frames_data: Optional[Any] = None
+
+    @model_validator(mode="after")
+    def check_strikes_and_spares(self):
+        # Una partida tiene como mucho 12 plenos/semiplenos en total (9 frames + 3 tiradas del 10.º)
+        # y cada pleno o semipleno vale al menos 10 puntos.
+        marks = self.strikes + self.spares
+        if marks > 12:
+            raise ValueError("Una partida no puede tener más de 12 plenos y semiplenos en total")
+        if self.score < 10 * marks:
+            raise ValueError(f"Con {self.strikes} plenos y {self.spares} semiplenos la puntuación mínima es {10 * marks}")
+        return self
 
 class GameCreate(BaseModel):
     scores: List[GameScoreCreate]
@@ -100,9 +111,11 @@ class GameResponse(BaseModel):
 
 # Leaderboard
 class LeaderboardEntry(BaseModel):
-    rank: int
+    rank: Optional[int] = None  # None si aún no ha jugado ninguna partida
     user_id: int
     full_name: str
+    games_played: int
+    average: float
     total_score: int
     total_strikes: int
     total_spares: int

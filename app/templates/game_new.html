@@ -102,11 +102,11 @@
                                                 <input type="text" maxlength="1" @input="updateScore(pIndex)" x-model="frame.roll1" class="w-full h-full text-center bg-transparent outline-none uppercase font-semibold">
                                             </div>
                                             <div class="flex-1" :class="{'border-r border-gray-300 dark:border-gray-600': fIndex === 9}">
-                                                <input type="text" maxlength="1" @input="updateScore(pIndex)" x-model="frame.roll2" class="w-full h-full text-center bg-transparent outline-none uppercase font-semibold" :disabled="fIndex !== 9 && frame.roll1 === 'X'">
+                                                <input type="text" maxlength="1" @input="updateScore(pIndex)" x-model="frame.roll2" class="w-full h-full text-center bg-transparent outline-none uppercase font-semibold" :disabled="fIndex !== 9 && (frame.roll1 || '').toUpperCase() === 'X'">
                                             </div>
                                             <template x-if="fIndex === 9">
                                                 <div class="flex-1">
-                                                    <input type="text" maxlength="1" @input="updateScore(pIndex)" x-model="frame.roll3" class="w-full h-full text-center bg-transparent outline-none uppercase font-semibold" :disabled="!(frame.roll1 === 'X' || frame.roll2 === '/')">
+                                                    <input type="text" maxlength="1" @input="updateScore(pIndex)" x-model="frame.roll3" class="w-full h-full text-center bg-transparent outline-none uppercase font-semibold" :disabled="!((frame.roll1 || '').toUpperCase() === 'X' || frame.roll2 === '/')">
                                                 </div>
                                             </template>
                                         </div>
@@ -244,6 +244,7 @@ function gameForm(roomId) {
             if (r10_3 !== null) {
                 allRolls.push(r10_3);
                 if (r10_3 === 10) strikes++;
+                else if (r10_3 === 'spare') spares++;
             }
 
             let rollIndex = 0;

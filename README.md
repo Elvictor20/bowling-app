@@ -22,7 +22,7 @@ Aplicación web para apuntar las partidas de bolos que juegas con tus amigos: cr
 - **Registro de partidas** en dos modos:
   - **Rápido**: puntos, plenos y semiplenos de cada jugador.
   - **Detallado**: marcador completo tirada a tirada (`X`, `/`, `-`), con la puntuación acumulada, los plenos y los semiplenos calculados automáticamente.
-- **Ranking** de la sala por puntos acumulados.
+- **Ranking** de la sala por media por partida: `(puntos + 5 por semipleno + 10 por pleno) ÷ partidas jugadas`, así quien juega menos partidas pero mejores no queda por detrás solo por haber jugado menos.
 - **Historial** de partidas, con el marcador frame a frame de las registradas en modo detallado.
 - **Estadísticas**: récord de la sala, *Rey del pleno* (más plenos por partida), jugador *Más en forma* y gráfico con la evolución de las puntuaciones.
 - **Motes**: en cada partida se puede otorgar un mote a un jugador, que queda guardado en su perfil.

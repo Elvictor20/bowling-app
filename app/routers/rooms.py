@@ -6,6 +6,16 @@ from sqlalchemy import func, desc, asc
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
+# Ranking: media = (puntos + 5 por semipleno + 10 por pleno) / partidas jugadas
+STRIKE_BONUS = 10
+SPARE_BONUS = 5
+
+
+def ranking_average(total_score: int, strikes: int, spares: int, games: int) -> float:
+    if games == 0:
+        return 0.0
+    return (total_score + SPARE_BONUS * spares + STRIKE_BONUS * strikes) / games
+
 @router.post("", response_model=schemas.RoomResponse)
 def create_room(room: schemas.RoomCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
     new_room = models.Room(name=room.name, created_by=current_user.id)
@@ -87,51 +97,45 @@ def get_room_leaderboard(room_id: int, current_user: models.User = Depends(auth.
     if not membership:
         raise HTTPException(status_code=403, detail="Not authorized")
         
-    # Calculate leaderboard for this specific room
+    # Totales de cada jugador en esta sala
     results = db.query(
-        models.User.id,
-        models.User.full_name,
+        models.GameScore.user_id,
+        func.count(models.GameScore.id).label('games_played'),
         func.sum(models.GameScore.score).label('total_score'),
         func.sum(models.GameScore.strikes).label('total_strikes'),
         func.sum(models.GameScore.spares).label('total_spares')
-    ).join(models.GameScore, models.GameScore.user_id == models.User.id)\
-     .join(models.Game, models.Game.id == models.GameScore.game_id)\
+    ).join(models.Game, models.Game.id == models.GameScore.game_id)\
      .filter(models.Game.room_id == room_id)\
-     .group_by(models.User.id, models.User.full_name)\
-     .order_by(desc('total_score')).all()
-     
-    # It might miss users with 0 games, so let's get all members first, then map
+     .group_by(models.GameScore.user_id).all()
+    stats_map = {r.user_id: r for r in results}
+
+    # Todos los miembros, también los que aún no han jugado
     members = db.query(models.User).join(models.RoomMember).filter(models.RoomMember.room_id == room_id).all()
-    
+
     leaderboard = []
-    stats_map = {r.id: r for r in results}
-    
     for member in members:
-        if member.id in stats_map:
-            st = stats_map[member.id]
-            leaderboard.append({
-                "user_id": member.id,
-                "full_name": member.full_name,
-                "total_score": st.total_score or 0,
-                "total_strikes": st.total_strikes or 0,
-                "total_spares": st.total_spares or 0
-            })
-        else:
-            leaderboard.append({
-                "user_id": member.id,
-                "full_name": member.full_name,
-                "total_score": 0,
-                "total_strikes": 0,
-                "total_spares": 0
-            })
-            
-    # Sort again
-    leaderboard.sort(key=lambda x: x["total_score"], reverse=True)
-    
-    # Assign rank
+        st = stats_map.get(member.id)
+        games = st.games_played if st else 0
+        score = (st.total_score or 0) if st else 0
+        strikes = (st.total_strikes or 0) if st else 0
+        spares = (st.total_spares or 0) if st else 0
+        leaderboard.append({
+            "user_id": member.id,
+            "full_name": member.full_name,
+            "games_played": games,
+            "average": round(ranking_average(score, strikes, spares, games), 1),
+            "total_score": score,
+            "total_strikes": strikes,
+            "total_spares": spares,
+            "rank": None,
+        })
+
+    # Por media; quien aún no ha jugado va al final y sin puesto
+    leaderboard.sort(key=lambda e: (e["games_played"] == 0, -e["average"], -e["games_played"]))
     for i, entry in enumerate(leaderboard):
-        entry["rank"] = i + 1
-        
+        if entry["games_played"]:
+            entry["rank"] = i + 1
+
     return leaderboard
 
 @router.post("/{room_id}/games", response_model=schemas.GameResponse)

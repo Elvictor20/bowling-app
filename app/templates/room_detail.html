@@ -41,12 +41,13 @@
     <!-- Leaderboard -->
     <div x-show="activeTab === 'leaderboard'" class="space-y-3">
         <template x-for="(entry, index) in leaderboard" :key="entry.user_id">
-            <div class="bg-surface rounded-2xl p-4 border border-gray-800 flex items-center shadow-sm">
+            <div class="bg-surface rounded-2xl p-4 border border-gray-800 flex items-center shadow-sm"
+                :class="{'opacity-60': !entry.games_played}">
 
                 <!-- Posición / Medallas -->
                 <div class="w-10 flex-shrink-0 text-center font-bold text-xl"
-                    :class="{'text-yellow-400': index === 0, 'text-gray-300': index === 1, 'text-amber-600': index === 2, 'text-gray-500': index > 2}">
-                    <span x-text="'#' + entry.rank"></span>
+                    :class="{'text-yellow-400': entry.rank === 1, 'text-gray-300': entry.rank === 2, 'text-amber-600': entry.rank === 3, 'text-gray-500': !entry.rank || entry.rank > 3}">
+                    <span x-text="entry.rank ? '#' + entry.rank : '–'"></span>
                 </div>
 
                 <!-- Avatar & Info -->
@@ -86,16 +87,20 @@
                         <div class="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                             <span x-text="getRoleName(entry.user_id)"></span>
                             <span>•</span>
-                            <span>Plenos: <span x-text="entry.total_strikes"></span></span>
+                            <span x-text="entry.games_played + (entry.games_played === 1 ? ' partida' : ' partidas')"></span>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            Plenos: <span x-text="entry.total_strikes"></span>
+                            · Semiplenos: <span x-text="entry.total_spares"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Total Score -->
+                <!-- Media -->
                 <div class="ml-4 flex-shrink-0 text-right">
                     <div class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-400 to-primary"
-                        x-text="entry.total_score"></div>
-                    <div class="text-[10px] text-gray-500 uppercase font-bold">Pts</div>
+                        x-text="entry.games_played ? entry.average.toFixed(1) : '–'"></div>
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Media</div>
                 </div>
             </div>
         </template>
@@ -104,6 +109,9 @@
             class="p-8 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-700">
             Aún no hay puntuaciones.
         </div>
+        <p x-show="leaderboard.length > 0" class="text-[11px] text-gray-500 text-center pt-1">
+            Media = (puntos + 5 por semipleno + 10 por pleno) ÷ partidas jugadas
+        </p>
     </div>
 
     <!-- Historial de Partidas -->

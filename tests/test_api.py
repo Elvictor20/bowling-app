@@ -228,3 +228,72 @@ def test_password_recovery_flow():
     res_login_new = client.post("/api/auth/login", data={"username": email, "password": "new_password"})
     assert res_login_new.status_code == 200
     assert "access_token" in res_login_new.json()
+
+
+def _setup_room_with_two_players():
+    client.post("/api/auth/register", json={"email": "a@test.com", "username": "a", "password": "pw", "full_name": "A"})
+    client.post("/api/auth/register", json={"email": "b@test.com", "username": "b", "password": "pw", "full_name": "B"})
+    token = client.post("/api/auth/login", data={"username": "a@test.com", "password": "pw"}).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    room_id = client.post("/api/rooms", json={"name": "Media"}, headers=headers).json()["id"]
+    client.post(f"/api/rooms/{room_id}/members", json={"username": "b"}, headers=headers)
+    return room_id, headers
+
+
+def _play(room_id, headers, scores):
+    res = client.post(f"/api/rooms/{room_id}/games", json={"scores": scores}, headers=headers)
+    assert res.status_code == 200, res.text
+
+
+def test_leaderboard_ranks_by_average_not_by_games_played():
+    room_id, headers = _setup_room_with_two_players()
+    # A juega 2 partidas buenas, B juega 5 peores: B suma más puntos pero A tiene mejor media
+    for _ in range(2):
+        _play(room_id, headers, [{"user_id": 1, "score": 180, "strikes": 4, "spares": 3}])
+    for _ in range(5):
+        _play(room_id, headers, [{"user_id": 2, "score": 120, "strikes": 1, "spares": 2}])
+
+    lb = client.get(f"/api/rooms/{room_id}/leaderboard", headers=headers).json()
+    assert [e["user_id"] for e in lb] == [1, 2]
+    assert lb[0]["total_score"] < lb[1]["total_score"]
+    # (180 + 5*3 + 10*4) = 235 por partida; (120 + 5*2 + 10*1) = 140 por partida
+    assert lb[0]["average"] == 235.0
+    assert lb[1]["average"] == 140.0
+    assert lb[0]["games_played"] == 2 and lb[1]["games_played"] == 5
+    assert [e["rank"] for e in lb] == [1, 2]
+
+
+def test_one_great_game_beats_many_average_games():
+    room_id, headers = _setup_room_with_two_players()
+    # Sin mínimo de partidas: cuenta la media, no cuántas se han jugado
+    _play(room_id, headers, [{"user_id": 2, "score": 220, "strikes": 7, "spares": 2}])
+    for _ in range(4):
+        _play(room_id, headers, [{"user_id": 1, "score": 130, "strikes": 2, "spares": 2}])
+
+    lb = client.get(f"/api/rooms/{room_id}/leaderboard", headers=headers).json()
+    assert [(e["user_id"], e["rank"]) for e in lb] == [(2, 1), (1, 2)]
+
+
+def test_player_without_games_goes_last_without_rank():
+    room_id, headers = _setup_room_with_two_players()
+    _play(room_id, headers, [{"user_id": 2, "score": 90, "strikes": 0, "spares": 1}])
+    lb = client.get(f"/api/rooms/{room_id}/leaderboard", headers=headers).json()
+    assert [(e["user_id"], e["rank"]) for e in lb] == [(2, 1), (1, None)]
+
+
+def test_member_without_games_has_zero_average():
+    room_id, headers = _setup_room_with_two_players()
+    lb = client.get(f"/api/rooms/{room_id}/leaderboard", headers=headers).json()
+    assert all(e["games_played"] == 0 and e["average"] == 0 and e["rank"] is None for e in lb)
+
+
+@pytest.mark.parametrize("score", [
+    {"user_id": 1, "score": 300, "strikes": 13, "spares": 0},   # más de 12 plenos
+    {"user_id": 1, "score": 200, "strikes": 0, "spares": 11},   # más de 10 semiplenos
+    {"user_id": 1, "score": 250, "strikes": 9, "spares": 4},    # más de 12 en total
+    {"user_id": 1, "score": 50, "strikes": 6, "spares": 0},     # 6 plenos valen al menos 60
+])
+def test_impossible_strikes_and_spares_are_rejected(score):
+    room_id, headers = _setup_room_with_two_players()
+    res = client.post(f"/api/rooms/{room_id}/games", json={"scores": [score]}, headers=headers)
+    assert res.status_code == 422
