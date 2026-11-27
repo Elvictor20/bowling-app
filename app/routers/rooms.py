@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Literal
 from .. import models, schemas, auth, database
 from sqlalchemy import func, desc, asc
 
@@ -11,10 +11,33 @@ STRIKE_BONUS = 10
 SPARE_BONUS = 5
 
 
+def game_value(score: int, strikes: int, spares: int) -> int:
+    """Valor de una partida: decide quién gana cada partida y alimenta la puntuación del ranking."""
+    return score + SPARE_BONUS * spares + STRIKE_BONUS * strikes
+
+
 def ranking_average(total_score: int, strikes: int, spares: int, games: int) -> float:
     if games == 0:
         return 0.0
-    return (total_score + SPARE_BONUS * spares + STRIKE_BONUS * strikes) / games
+    return game_value(total_score, strikes, spares) / games
+
+
+def count_wins(games) -> dict:
+    """Partidas ganadas por jugador. Solo cuentan partidas de 2 o más jugadores; en un empate ganan todos los empatados."""
+    wins = {}
+    for game in games:
+        if len(game.scores) < 2:
+            continue
+        values = {sc.user_id: game_value(sc.score, sc.strikes, sc.spares) for sc in game.scores}
+        best = max(values.values())
+        for user_id, value in values.items():
+            if value == best:
+                wins[user_id] = wins.get(user_id, 0) + 1
+    return wins
+
+
+# Tops de la sala: campo por el que se ordena cada uno
+LEADERBOARD_FIELDS = {"average": "average", "strikes": "total_strikes", "spares": "total_spares", "wins": "wins"}
 
 @router.post("", response_model=schemas.RoomResponse)
 def create_room(room: schemas.RoomCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
@@ -91,7 +114,7 @@ def update_room_member(room_id: int, user_id: int, member_data: schemas.RoomMemb
     return target_member
 
 @router.get("/{room_id}/leaderboard", response_model=List[schemas.LeaderboardEntry])
-def get_room_leaderboard(room_id: int, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+def get_room_leaderboard(room_id: int, by: Literal["average", "strikes", "spares", "wins"] = "average", current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
     # Check access
     membership = db.query(models.RoomMember).filter(models.RoomMember.room_id == room_id, models.RoomMember.user_id == current_user.id).first()
     if not membership:
@@ -108,6 +131,7 @@ def get_room_leaderboard(room_id: int, current_user: models.User = Depends(auth.
      .filter(models.Game.room_id == room_id)\
      .group_by(models.GameScore.user_id).all()
     stats_map = {r.user_id: r for r in results}
+    wins = count_wins(db.query(models.Game).filter(models.Game.room_id == room_id).all())
 
     # Todos los miembros, también los que aún no han jugado
     members = db.query(models.User).join(models.RoomMember).filter(models.RoomMember.room_id == room_id).all()
@@ -127,14 +151,18 @@ def get_room_leaderboard(room_id: int, current_user: models.User = Depends(auth.
             "total_score": score,
             "total_strikes": strikes,
             "total_spares": spares,
+            "wins": wins.get(member.id, 0),
             "rank": None,
         })
 
-    # Por media; quien aún no ha jugado va al final y sin puesto
-    leaderboard.sort(key=lambda e: (e["games_played"] == 0, -e["average"], -e["games_played"]))
+    # Orden del top elegido; con el mismo valor se comparte puesto.
+    # Quien aún no ha jugado va al final y sin puesto.
+    field = LEADERBOARD_FIELDS[by]
+    leaderboard.sort(key=lambda e: (e["games_played"] == 0, -e[field], e["games_played"] if by != "average" else -e["games_played"]))
     for i, entry in enumerate(leaderboard):
         if entry["games_played"]:
-            entry["rank"] = i + 1
+            prev = leaderboard[i - 1] if i else None
+            entry["rank"] = prev["rank"] if prev and prev["rank"] and prev[field] == entry[field] else i + 1
 
     return leaderboard
 

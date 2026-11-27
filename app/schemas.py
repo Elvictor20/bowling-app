@@ -119,6 +119,7 @@ class LeaderboardEntry(BaseModel):
     total_score: int
     total_strikes: int
     total_spares: int
+    wins: int
 
 class PlayerStatEntry(BaseModel):
     user_id: int
