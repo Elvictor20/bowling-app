@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from datetime import timedelta
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth, database
+from .auth import start_password_reset
 from sqlalchemy import func
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -28,3 +30,44 @@ def get_user_me(current_user: models.User = Depends(auth.get_current_user), db: 
         total_spares=stats.total_spares or 0,
         nicknames=nicknames
     )
+
+@router.patch("/me", response_model=schemas.UserUpdateResponse)
+def update_user_me(data: schemas.UserUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    if data.username and data.username != current_user.username:
+        if db.query(models.User).filter(models.User.username == data.username).first():
+            raise HTTPException(status_code=400, detail="Ese nombre de usuario ya está en uso")
+        current_user.username = data.username
+
+    if data.email and data.email != current_user.email:
+        # El correo sirve para entrar y para recuperar la contraseña: pedimos la actual para cambiarlo
+        if not data.current_password or not auth.verify_password(data.current_password, current_user.password_hash):
+            raise HTTPException(status_code=400, detail="Para cambiar el correo escribe tu contraseña actual")
+        if db.query(models.User).filter(models.User.email == data.email).first():
+            raise HTTPException(status_code=400, detail="Ese correo ya está registrado")
+        current_user.email = data.email
+        # Un enlace de recuperación pedido para el correo anterior deja de valer
+        current_user.reset_token = None
+        current_user.reset_token_expires_at = None
+
+    if data.full_name is not None:
+        current_user.full_name = data.full_name
+    if data.phone_number is not None:
+        current_user.phone_number = data.phone_number or None
+
+    db.commit()
+    db.refresh(current_user)
+    token = auth.create_access_token(
+        data={"sub": current_user.username},
+        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return schemas.UserUpdateResponse(
+        id=current_user.id, email=current_user.email, username=current_user.username,
+        full_name=current_user.full_name, phone_number=current_user.phone_number,
+        created_at=current_user.created_at, access_token=token,
+    )
+
+@router.post("/me/password-reset")
+def request_my_password_reset(background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    """Envía al correo del usuario el mismo enlace que «¿Has olvidado tu contraseña?»."""
+    start_password_reset(current_user, background_tasks, db)
+    return {"message": f"Te hemos enviado un enlace a {current_user.email} para cambiar la contraseña. Caduca en 20 minutos."}

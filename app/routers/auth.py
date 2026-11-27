@@ -50,16 +50,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+def start_password_reset(user: models.User, background_tasks: BackgroundTasks, db: Session):
+    """Genera un enlace de un solo uso (20 minutos) y lo envía por correo."""
+    token = secrets.token_urlsafe(32)
+    user.reset_token = token
+    user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=20)
+    db.commit()
+    background_tasks.add_task(send_reset_password_email, user.email, user.full_name, token)
+
 @router.post("/forgot-password")
 def forgot_password(req: schemas.ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(models.User.email == req.email).first()
     if user:
-        token = secrets.token_urlsafe(32)
-        user.reset_token = token
-        user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=20)
-        db.commit()
-        background_tasks.add_task(send_reset_password_email, user.email, user.full_name, token)
-        
+        start_password_reset(user, background_tasks, db)
+
     # Always return same generic response to prevent email enumeration
     return {"message": "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña."}
 

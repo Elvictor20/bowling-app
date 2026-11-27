@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, EmailStr, model_validator
+import re
+from pydantic import BaseModel, Field, EmailStr, model_validator, field_validator
 from typing import List, Optional, Any
 from datetime import datetime
 from .models import RoleEnum
@@ -27,6 +28,36 @@ class UserStats(UserResponse):
     total_strikes: int
     total_spares: int
     nicknames: List[str]
+
+class UserUpdate(BaseModel):
+    """Campos editables del perfil; los que no se envían no cambian."""
+    full_name: Optional[str] = None
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
+    current_password: Optional[str] = None  # obligatoria solo para cambiar el correo
+
+    @field_validator("full_name", "username", "phone_number")
+    @classmethod
+    def strip_text(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @field_validator("full_name")
+    @classmethod
+    def check_full_name(cls, v):
+        if v is not None and not 1 <= len(v) <= 60:
+            raise ValueError("El nombre debe tener entre 1 y 60 caracteres")
+        return v
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v):
+        if v is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{3,30}", v):
+            raise ValueError("El usuario debe tener entre 3 y 30 caracteres: letras, números, punto, guion o guion bajo")
+        return v
+
+class UserUpdateResponse(UserResponse):
+    access_token: str  # el token va ligado al usuario, así que se renueva al guardar
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
