@@ -40,13 +40,25 @@
 
     <!-- Leaderboard -->
     <div x-show="activeTab === 'leaderboard'" class="space-y-3">
+        <!-- Tipo de top -->
+        <div class="grid grid-cols-4 gap-1.5">
+            <template x-for="t in tops" :key="t.by">
+                <button @click="selectTop(t.by)"
+                    :class="topBy === t.by ? 'bg-primary text-white border-primary' : 'bg-surface text-gray-400 border-gray-800 hover:text-gray-200'"
+                    class="py-2 px-1 rounded-xl border text-xs font-semibold transition flex flex-col items-center gap-0.5">
+                    <span class="text-base leading-none" x-text="t.icon"></span>
+                    <span x-text="t.label"></span>
+                </button>
+            </template>
+        </div>
         <template x-for="(entry, index) in leaderboard" :key="entry.user_id">
-            <div class="bg-surface rounded-2xl p-4 border border-gray-800 flex items-center shadow-sm">
+            <div class="bg-surface rounded-2xl p-4 border border-gray-800 flex items-center shadow-sm"
+                :class="{'opacity-60': !entry.games_played}">
 
                 <!-- Posición / Medallas -->
                 <div class="w-10 flex-shrink-0 text-center font-bold text-xl"
-                    :class="{'text-yellow-400': index === 0, 'text-gray-300': index === 1, 'text-amber-600': index === 2, 'text-gray-500': index > 2}">
-                    <span x-text="'#' + entry.rank"></span>
+                    :class="{'text-yellow-400': entry.rank === 1, 'text-gray-300': entry.rank === 2, 'text-amber-600': entry.rank === 3, 'text-gray-500': !entry.rank || entry.rank > 3}">
+                    <span x-text="entry.rank ? '#' + entry.rank : '–'"></span>
                 </div>
 
                 <!-- Avatar & Info -->
@@ -86,16 +98,23 @@
                         <div class="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                             <span x-text="getRoleName(entry.user_id)"></span>
                             <span>•</span>
-                            <span>Plenos: <span x-text="entry.total_strikes"></span></span>
+                            <span x-text="entry.games_played + (entry.games_played === 1 ? ' partida' : ' partidas')"></span>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5"
+                            :title="entry.total_strikes + ' plenos, ' + entry.total_spares + ' semiplenos'">
+                            🎳 <span class="font-semibold text-gray-300" x-text="entry.total_strikes"></span>
+                            · 🔲 <span class="font-semibold text-gray-300" x-text="entry.total_spares"></span>
+                            · 🏆 <span class="font-semibold text-gray-300" x-text="entry.wins"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Total Score -->
+                <!-- Valor del top elegido -->
                 <div class="ml-4 flex-shrink-0 text-right">
                     <div class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-400 to-primary"
-                        x-text="entry.total_score"></div>
-                    <div class="text-[10px] text-gray-500 uppercase font-bold">Pts</div>
+                        x-text="topValue(entry)"></div>
+                    <div x-show="currentTop().unit" class="text-[10px] text-gray-500 uppercase font-bold"
+                        x-text="currentTop().unit"></div>
                 </div>
             </div>
         </template>
@@ -104,6 +123,8 @@
             class="p-8 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-700">
             Aún no hay puntuaciones.
         </div>
+        <p x-show="leaderboard.length > 0 && currentTop().note" class="text-[11px] text-gray-500 text-center pt-1"
+            x-text="currentTop().note"></p>
     </div>
 
     <!-- Historial de Partidas -->
@@ -118,29 +139,33 @@
                             <span class="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded-full font-medium"
                                 x-text="new Date(game.played_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></span>
                         </div>
-                        <div class="text-sm text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                            <span class="flex items-center gap-1">🏆 <span class="font-bold text-primary"
-                                    x-text="game.total_score + ' pts'"></span></span>
-                            <span class="flex items-center gap-1">🎳 <span class="font-bold text-gray-200"
-                                    x-text="game.total_strikes"></span></span>
-                            <span class="flex items-center gap-1">🔲 <span class="font-bold text-gray-200"
-                                    x-text="game.total_spares"></span></span>
+                        <div x-show="game.winner" class="text-sm text-gray-400 mt-2 flex items-center gap-1">
+                            🏆 <span class="font-bold text-gray-100" x-text="game.winner?.user.full_name"></span>
+                            <span>gana la partida</span>
                         </div>
                         <div x-show="!game.isDetailed"
                             class="mt-2 text-[10px] font-semibold text-purple-400/70 uppercase tracking-wide">
                             • Modo Rápido
                         </div>
 
-                        <!-- Mini Avatars/Scores -->
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <template x-for="sc in game.scores">
-                                <div
-                                    class="flex items-center bg-gray-800/50 border border-gray-700 rounded-full px-2 py-1">
-                                    <div class="w-5 h-5 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white mr-2"
+                        <!-- Clasificación de la partida -->
+                        <div class="mt-3 space-y-2">
+                            <template x-for="sc in game.scores" :key="sc.id">
+                                <div class="flex items-center gap-2 text-sm">
+                                    <span class="w-6 shrink-0 text-center font-bold"
+                                        :class="{'text-yellow-400': sc.rank === 1, 'text-gray-300': sc.rank === 2, 'text-amber-600': sc.rank === 3, 'text-gray-500': sc.rank > 3}"
+                                        x-text="'#' + sc.rank"></span>
+                                    <div class="w-6 h-6 shrink-0 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-[11px] font-bold text-primary"
                                         x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
-                                    <span class="text-xs text-gray-200 font-medium mr-1"
+                                    <span class="flex-1 min-w-0 truncate font-medium text-gray-200"
                                         x-text="sc.user.full_name"></span>
-                                    <span class="text-xs text-primary font-bold" x-text="sc.score"></span>
+                                    <span class="shrink-0 text-xs text-gray-400 whitespace-nowrap"
+                                        :title="sc.strikes + ' plenos, ' + sc.spares + ' semiplenos'">
+                                        🎳 <span class="font-semibold text-gray-300" x-text="sc.strikes"></span>
+                                        · 🔲 <span class="font-semibold text-gray-300" x-text="sc.spares"></span>
+                                    </span>
+                                    <span class="w-16 shrink-0 text-right font-bold text-primary whitespace-nowrap"
+                                        x-text="sc.score + ' pts'"></span>
                                 </div>
                             </template>
                         </div>
@@ -324,6 +349,25 @@
             roomId: roomId,
             activeTab: 'leaderboard',
             leaderboard: [],
+            topBy: 'average',
+            tops: [
+                { by: 'average', icon: '⭐', label: 'Puntuación', unit: '',
+                  note: 'Puntuación = (puntos + 5 por semipleno + 10 por pleno) ÷ partidas jugadas' },
+                { by: 'strikes', icon: '🎳', label: 'Plenos', unit: 'plenos', note: '' },
+                { by: 'spares', icon: '🔲', label: 'Semiplenos', unit: 'semiplenos', note: '' },
+                { by: 'wins', icon: '🏆', label: 'Victorias', unit: 'victorias',
+                  note: 'Gana quien hace más puntos + 5 por semipleno + 10 por pleno en la partida. No cuentan las partidas de un solo jugador.' },
+            ],
+            currentTop() { return this.tops.find(t => t.by === this.topBy); },
+            topValue(entry) {
+                if (!entry.games_played) return '–';
+                if (this.topBy === 'average') return entry.average.toFixed(1);
+                return { strikes: entry.total_strikes, spares: entry.total_spares, wins: entry.wins }[this.topBy];
+            },
+            async selectTop(by) {
+                this.topBy = by;
+                await this.loadLeaderboard();
+            },
             games: [],
             currentUserId: null,
             myRole: 'VIEWER',
@@ -396,7 +440,7 @@
             },
             async loadLeaderboard() {
                 try {
-                    const res = await fetch(`/api/rooms/${this.roomId}/leaderboard`, {
+                    const res = await fetch(`/api/rooms/${this.roomId}/leaderboard?by=${this.topBy}`, {
                         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
                     });
                     if (res.status === 401) logout();
@@ -416,9 +460,14 @@
                         let data = await res.json();
                         data.forEach(game => {
                             game.expanded = false;
-                            game.total_score = game.scores.reduce((sum, sc) => sum + sc.score, 0);
-                            game.total_strikes = game.scores.reduce((sum, sc) => sum + sc.strikes, 0);
-                            game.total_spares = game.scores.reduce((sum, sc) => sum + sc.spares, 0);
+                            // Clasificación de la partida con el mismo criterio que el ranking de la sala
+                            const value = sc => sc.score + 5 * sc.spares + 10 * sc.strikes;
+                            game.scores.sort((a, b) => value(b) - value(a) || b.score - a.score);
+                            game.scores.forEach((sc, i) => {
+                                const prev = game.scores[i - 1];
+                                sc.rank = prev && value(prev) === value(sc) ? prev.rank : i + 1;
+                            });
+                            game.winner = game.scores[0];
                             // A game is detailed if AT LEAST ONE score has frames_data
                             game.isDetailed = game.scores.some(sc => sc.frames_data && sc.frames_data.length > 0);
                         });
@@ -578,7 +627,7 @@
                         await this.loadLeaderboard(); // Recargar para ver al nuevo miembro con 0 puntos
                     } else {
                         const data = await res.json();
-                        this.inviteError = data.detail || 'Error al añadir';
+                        this.inviteError = (Array.isArray(data.detail) ? data.detail.map(d => String(d.msg).replace(/^Value error, /, '')).join('. ') : data.detail) || 'Error al añadir';
                     }
                 } catch (e) {
                     this.inviteError = 'Error de conexión';

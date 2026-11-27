@@ -31,7 +31,7 @@
                 });
                 
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Error al registrar');
+                if (!res.ok) throw new Error((Array.isArray(data.detail) ? data.detail.map(d => String(d.msg).replace(/^Value error, /, '')).join('. ') : data.detail) || 'Error al registrar');
                 
                 // Auto login or redirect
                 alert('Registro exitoso. Ahora puedes iniciar sesión.');
