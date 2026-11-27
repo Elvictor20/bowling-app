@@ -348,3 +348,79 @@ def test_tied_players_share_rank_and_non_players_get_none():
 def test_unknown_top_is_rejected():
     room_id, headers = _setup_room_with_two_players()
     assert client.get(f"/api/rooms/{room_id}/leaderboard?by=potato", headers=headers).status_code == 422
+
+
+def _login(email, password="pw"):
+    res = client.post("/api/auth/login", data={"username": email, "password": password})
+    return {"Authorization": f"Bearer {res.json()['access_token']}"} if res.status_code == 200 else None
+
+
+def _register(username, email=None):
+    client.post("/api/auth/register", json={"email": email or f"{username}@test.com", "username": username,
+                                            "password": "pw", "full_name": username.title()})
+
+
+def test_update_name_and_phone():
+    _register("perfil")
+    headers = _login("perfil@test.com")
+    res = client.patch("/api/users/me", json={"full_name": "  Nombre Nuevo ", "phone_number": "600111222"}, headers=headers)
+    assert res.status_code == 200, res.text
+    me = client.get("/api/users/me", headers=headers).json()
+    assert me["full_name"] == "Nombre Nuevo" and me["phone_number"] == "600111222"
+    # Vaciar el teléfono lo borra
+    client.patch("/api/users/me", json={"phone_number": ""}, headers=headers)
+    assert client.get("/api/users/me", headers=headers).json()["phone_number"] is None
+
+
+def test_change_username_returns_working_token():
+    _register("viejo")
+    headers = _login("viejo@test.com")
+    res = client.patch("/api/users/me", json={"username": "nuevo"}, headers=headers)
+    assert res.status_code == 200, res.text
+    new_headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
+    assert client.get("/api/users/me", headers=new_headers).json()["username"] == "nuevo"
+
+
+def test_username_must_be_unique_and_valid():
+    _register("uno"); _register("dos")
+    headers = _login("dos@test.com")
+    assert client.patch("/api/users/me", json={"username": "uno"}, headers=headers).status_code == 400
+    assert client.patch("/api/users/me", json={"username": "con espacio"}, headers=headers).status_code == 422
+    assert client.patch("/api/users/me", json={"username": "ab"}, headers=headers).status_code == 422
+    assert client.patch("/api/users/me", json={"full_name": "   "}, headers=headers).status_code == 422
+
+
+def test_change_email_requires_current_password():
+    _register("correo"); _register("otro")
+    headers = _login("correo@test.com")
+    assert client.patch("/api/users/me", json={"email": "nuevo@test.com"}, headers=headers).status_code == 400
+    assert client.patch("/api/users/me", json={"email": "nuevo@test.com", "current_password": "mal"}, headers=headers).status_code == 400
+    assert client.patch("/api/users/me", json={"email": "otro@test.com", "current_password": "pw"}, headers=headers).status_code == 400
+    assert client.patch("/api/users/me", json={"email": "no-es-correo", "current_password": "pw"}, headers=headers).status_code == 422
+    res = client.patch("/api/users/me", json={"email": "nuevo@test.com", "current_password": "pw"}, headers=headers)
+    assert res.status_code == 200, res.text
+    assert _login("nuevo@test.com") is not None
+    assert _login("correo@test.com") is None
+
+
+def test_profile_password_reset_sends_link_to_own_email():
+    _register("olvido")
+    headers = _login("olvido@test.com")
+    res = client.post("/api/users/me/password-reset", headers=headers)
+    assert res.status_code == 200 and "olvido@test.com" in res.json()["message"]
+    db = TestingSessionLocal()
+    try:
+        token = db.query(models.User).filter(models.User.username == "olvido").first().reset_token
+    finally:
+        db.close()
+    assert client.post("/api/auth/reset-password", json={"token": token, "new_password": "nueva"}).status_code == 200
+    assert _login("olvido@test.com", "nueva") is not None
+
+
+def test_rejected_update_changes_nothing():
+    _register("entero")
+    headers = _login("entero@test.com")
+    # El usuario es válido pero el correo falla por falta de contraseña: no se guarda nada
+    res = client.patch("/api/users/me", json={"username": "cambiado", "email": "x@test.com"}, headers=headers)
+    assert res.status_code == 400
+    assert client.get("/api/users/me", headers=headers).json()["username"] == "entero"
