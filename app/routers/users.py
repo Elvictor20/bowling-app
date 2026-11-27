@@ -1,8 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from datetime import timedelta
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth, database
-from .auth import start_password_reset
+from .auth import require_emails, start_password_reset
 from sqlalchemy import func
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -56,10 +55,7 @@ def update_user_me(data: schemas.UserUpdate, current_user: models.User = Depends
 
     db.commit()
     db.refresh(current_user)
-    token = auth.create_access_token(
-        data={"sub": current_user.username},
-        expires_delta=timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+    token = auth.token_for(current_user)
     return schemas.UserUpdateResponse(
         id=current_user.id, email=current_user.email, username=current_user.username,
         full_name=current_user.full_name, phone_number=current_user.phone_number,
@@ -69,5 +65,7 @@ def update_user_me(data: schemas.UserUpdate, current_user: models.User = Depends
 @router.post("/me/password-reset")
 def request_my_password_reset(background_tasks: BackgroundTasks, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
     """Envía al correo del usuario el mismo enlace que «¿Has olvidado tu contraseña?»."""
-    start_password_reset(current_user, background_tasks, db)
+    require_emails()
+    if not start_password_reset(current_user, background_tasks, db):
+        raise HTTPException(status_code=429, detail="Ya te hemos enviado un enlace hace menos de un minuto. Revisa tu correo (también la carpeta de spam).")
     return {"message": f"Te hemos enviado un enlace a {current_user.email} para cambiar la contraseña. Caduca en 20 minutos."}

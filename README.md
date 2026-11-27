@@ -30,7 +30,7 @@ Aplicación web para apuntar las partidas de bolos que juegas con tus amigos: cr
 - **Estadísticas**: récord de la sala, *Rey del pleno* (más plenos por partida), jugador *Más en forma* y gráfico con la evolución de las puntuaciones.
 - **Motes**: en cada partida se puede otorgar un mote a un jugador, que queda guardado en su perfil.
 - **Perfil** con los totales del jugador y los motes que ha ido ganando.
-- **Cuentas de usuario**: registro, inicio de sesión con JWT, contraseñas cifradas con bcrypt y recuperación de contraseña por correo (enlace válido durante 20 minutos).
+- **Cuentas de usuario**: registro, inicio de sesión con JWT, contraseñas cifradas con bcrypt y recuperación de contraseña por correo (enlace de un solo uso válido 20 minutos, como mucho uno por minuto). Al cambiar la contraseña se cierran las sesiones abiertas.
 
 ## Tecnologías
 
@@ -70,11 +70,16 @@ La aplicación se configura con variables de entorno. Con Docker Compose basta c
 | Variable | Descripción | Valor por defecto |
 | --- | --- | --- |
 | `SECRET_KEY` | Clave con la que se firman los JWT. **Cámbiala** si vas a exponer la app. | Clave de ejemplo |
+| `APP_URL` | Dirección pública de la web, para los enlaces de los correos. | `http://localhost:8000` |
 | `DATABASE_URL` | Cadena de conexión de SQLAlchemy. | `sqlite:///./data/bowling.db` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Servidor SMTP (con STARTTLS) para los correos de bienvenida y de recuperación de contraseña. | Sin definir |
-| `EMAILS_FROM_NAME` | Nombre del remitente de los correos. | `Bowling Club App` |
+| `SMTP_HOST` | Servidor de correo. Sin él, el envío está desactivado. | Sin definir |
+| `SMTP_SECURITY` | `starttls`, `ssl` o `none` (por ejemplo, un Postfix en la misma máquina). | `starttls` |
+| `SMTP_PORT` | Puerto del servidor de correo. | 587, 465 o 25 según `SMTP_SECURITY` |
+| `SMTP_USER`, `SMTP_PASSWORD` | Credenciales SMTP. Opcionales si el servidor no pide autenticación. | Sin definir |
+| `EMAILS_FROM`, `EMAILS_FROM_NAME` | Dirección y nombre del remitente. | `SMTP_USER`, `Bowling Club App` |
+| `EMAILS_CONSOLE` | `true` para imprimir los correos en la consola en vez de enviarlos (desarrollo). | Sin definir |
 
-Si no se configura el SMTP, los correos no se envían: se imprimen en la consola del servidor, incluido el enlace para restablecer la contraseña, lo que resulta cómodo para desarrollar.
+Si el envío de correos no está configurado, la web lo dice al pedir un enlace de recuperación en vez de fingir que lo ha mandado. Para desarrollar en local, `EMAILS_CONSOLE=true` imprime los correos (y el enlace) en la consola del servidor. Si el servidor de correo está en la misma máquina que el contenedor de Docker, usa `SMTP_HOST=host.docker.internal`.
 
 ## API
 

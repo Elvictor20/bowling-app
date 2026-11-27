@@ -11,8 +11,16 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/bowling.db}
       - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-in-production}
+      - APP_URL=${APP_URL:-http://localhost:8000}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_SECURITY=${SMTP_SECURITY:-starttls}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - EMAILS_FROM=${EMAILS_FROM:-}
       - EMAILS_FROM_NAME=${EMAILS_FROM_NAME:-Bowling Club App}
+      - EMAILS_CONSOLE=${EMAILS_CONSOLE:-}
+    # Para un agente de correo instalado en la propia máquina (p. ej. Postfix), desde el
+    # contenedor se llega con SMTP_HOST=host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
