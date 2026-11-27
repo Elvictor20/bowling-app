@@ -7,6 +7,9 @@ import sys
 
 # Add app to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# En los tests los correos se imprimen en la consola en vez de enviarse
+os.environ.setdefault("EMAILS_CONSOLE", "true")
+os.environ.setdefault("APP_URL", "https://bolos.example")
 
 from app.main import app
 from app.database import Base, get_db
@@ -29,6 +32,14 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
+
+@pytest.fixture
+def sent_resets(monkeypatch):
+    """Guarda (correo, token) de cada enlace de recuperación que se envía."""
+    sent = []
+    from app.routers import auth as auth_router
+    monkeypatch.setattr(auth_router, "send_reset_password_email", lambda email, name, token: sent.append((email, token)))
+    return sent
 
 @pytest.fixture(autouse=True)
 def setup_database():
@@ -59,10 +70,10 @@ def test_register_and_login():
 
 def test_create_room_and_leaderboard():
     # Setup users
-    client.post("/api/auth/register", json={"email": "user1@test.com", "username": "user1", "password": "pw", "full_name": "User 1"})
-    client.post("/api/auth/register", json={"email": "user2@test.com", "username": "user2", "password": "pw", "full_name": "User 2"})
+    client.post("/api/auth/register", json={"email": "user1@test.com", "username": "user1", "password": "secreto123", "full_name": "User 1"})
+    client.post("/api/auth/register", json={"email": "user2@test.com", "username": "user2", "password": "secreto123", "full_name": "User 2"})
 
-    token1 = client.post("/api/auth/login", data={"username": "user1@test.com", "password": "pw"}).json()["access_token"]
+    token1 = client.post("/api/auth/login", data={"username": "user1@test.com", "password": "secreto123"}).json()["access_token"]
     
     # Create room
     headers = {"Authorization": f"Bearer {token1}"}
@@ -101,8 +112,8 @@ def test_create_room_and_leaderboard():
 
 def test_perfect_game_and_history():
     # Setup users
-    client.post("/api/auth/register", json={"email": "pro@test.com", "username": "pro", "password": "pw", "full_name": "Pro Bowler"})
-    token = client.post("/api/auth/login", data={"username": "pro@test.com", "password": "pw"}).json()["access_token"]
+    client.post("/api/auth/register", json={"email": "pro@test.com", "username": "pro", "password": "secreto123", "full_name": "Pro Bowler"})
+    token = client.post("/api/auth/login", data={"username": "pro@test.com", "password": "secreto123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
     res_room = client.post("/api/rooms", json={"name": "Tournament Room"}, headers=headers)
@@ -187,7 +198,7 @@ def test_perfect_game_and_history():
     # Most fit requires 2 games, it went from 300 to 150, so improvement is -150
     assert stats["records"]["most_fit"]["improvement"] == -150
 
-def test_password_recovery_flow():
+def test_password_recovery_flow(sent_resets):
     # Setup user
     email = "recovery@test.com"
     client.post("/api/auth/register", json={"email": email, "username": "recovery_user", "password": "old_password", "full_name": "Recovery"})
@@ -197,14 +208,14 @@ def test_password_recovery_flow():
     assert res_forgot.status_code == 200
     assert "recibirás un enlace" in res_forgot.json()["message"]
     
-    # Check that token was generated in DB
+    # Se ha enviado un enlace, y en la base de datos solo está su hash
+    assert len(sent_resets) == 1 and sent_resets[0][0] == email
+    token = sent_resets[0][1]
     db_gen = TestingSessionLocal()
     try:
         user = db_gen.query(models.User).filter(models.User.email == email).first()
-        assert user.reset_token is not None
+        assert user.reset_token is not None and user.reset_token != token
         assert user.reset_token_expires_at is not None
-        
-        token = user.reset_token
         
         # 2. Reset password - invalid token
         res_reset_invalid = client.post("/api/auth/reset-password", json={"token": "invalid_token", "new_password": "new_password"})
@@ -231,9 +242,9 @@ def test_password_recovery_flow():
 
 
 def _setup_room_with_two_players():
-    client.post("/api/auth/register", json={"email": "a@test.com", "username": "a", "password": "pw", "full_name": "A"})
-    client.post("/api/auth/register", json={"email": "b@test.com", "username": "b", "password": "pw", "full_name": "B"})
-    token = client.post("/api/auth/login", data={"username": "a@test.com", "password": "pw"}).json()["access_token"]
+    client.post("/api/auth/register", json={"email": "a@test.com", "username": "a", "password": "secreto123", "full_name": "A"})
+    client.post("/api/auth/register", json={"email": "b@test.com", "username": "b", "password": "secreto123", "full_name": "B"})
+    token = client.post("/api/auth/login", data={"username": "a@test.com", "password": "secreto123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     room_id = client.post("/api/rooms", json={"name": "Media"}, headers=headers).json()["id"]
     client.post(f"/api/rooms/{room_id}/members", json={"username": "b"}, headers=headers)
@@ -301,7 +312,7 @@ def test_impossible_strikes_and_spares_are_rejected(score):
 
 def _setup_room_with_three_players():
     room_id, headers = _setup_room_with_two_players()
-    client.post("/api/auth/register", json={"email": "c@test.com", "username": "c", "password": "pw", "full_name": "C"})
+    client.post("/api/auth/register", json={"email": "c@test.com", "username": "c", "password": "secreto123", "full_name": "C"})
     client.post(f"/api/rooms/{room_id}/members", json={"username": "c"}, headers=headers)
     return room_id, headers
 
@@ -350,14 +361,14 @@ def test_unknown_top_is_rejected():
     assert client.get(f"/api/rooms/{room_id}/leaderboard?by=potato", headers=headers).status_code == 422
 
 
-def _login(email, password="pw"):
+def _login(email, password="secreto123"):
     res = client.post("/api/auth/login", data={"username": email, "password": password})
     return {"Authorization": f"Bearer {res.json()['access_token']}"} if res.status_code == 200 else None
 
 
 def _register(username, email=None):
     client.post("/api/auth/register", json={"email": email or f"{username}@test.com", "username": username,
-                                            "password": "pw", "full_name": username.title()})
+                                            "password": "secreto123", "full_name": username.title()})
 
 
 def test_update_name_and_phone():
@@ -395,26 +406,22 @@ def test_change_email_requires_current_password():
     headers = _login("correo@test.com")
     assert client.patch("/api/users/me", json={"email": "nuevo@test.com"}, headers=headers).status_code == 400
     assert client.patch("/api/users/me", json={"email": "nuevo@test.com", "current_password": "mal"}, headers=headers).status_code == 400
-    assert client.patch("/api/users/me", json={"email": "otro@test.com", "current_password": "pw"}, headers=headers).status_code == 400
-    assert client.patch("/api/users/me", json={"email": "no-es-correo", "current_password": "pw"}, headers=headers).status_code == 422
-    res = client.patch("/api/users/me", json={"email": "nuevo@test.com", "current_password": "pw"}, headers=headers)
+    assert client.patch("/api/users/me", json={"email": "otro@test.com", "current_password": "secreto123"}, headers=headers).status_code == 400
+    assert client.patch("/api/users/me", json={"email": "no-es-correo", "current_password": "secreto123"}, headers=headers).status_code == 422
+    res = client.patch("/api/users/me", json={"email": "nuevo@test.com", "current_password": "secreto123"}, headers=headers)
     assert res.status_code == 200, res.text
     assert _login("nuevo@test.com") is not None
     assert _login("correo@test.com") is None
 
 
-def test_profile_password_reset_sends_link_to_own_email():
+def test_profile_password_reset_sends_link_to_own_email(sent_resets):
     _register("olvido")
     headers = _login("olvido@test.com")
     res = client.post("/api/users/me/password-reset", headers=headers)
     assert res.status_code == 200 and "olvido@test.com" in res.json()["message"]
-    db = TestingSessionLocal()
-    try:
-        token = db.query(models.User).filter(models.User.username == "olvido").first().reset_token
-    finally:
-        db.close()
-    assert client.post("/api/auth/reset-password", json={"token": token, "new_password": "nueva"}).status_code == 200
-    assert _login("olvido@test.com", "nueva") is not None
+    token = sent_resets[0][1]
+    assert client.post("/api/auth/reset-password", json={"token": token, "new_password": "nueva-clave"}).status_code == 200
+    assert _login("olvido@test.com", "nueva-clave") is not None
 
 
 def test_rejected_update_changes_nothing():
@@ -424,3 +431,58 @@ def test_rejected_update_changes_nothing():
     res = client.patch("/api/users/me", json={"username": "cambiado", "email": "x@test.com"}, headers=headers)
     assert res.status_code == 400
     assert client.get("/api/users/me", headers=headers).json()["username"] == "entero"
+
+
+def test_password_change_closes_other_sessions(sent_resets):
+    _register("sesion")
+    old = _login("sesion@test.com")
+    client.post("/api/auth/forgot-password", json={"email": "sesion@test.com"})
+    client.post("/api/auth/reset-password", json={"token": sent_resets[0][1], "new_password": "otra-clave-1"})
+    assert client.get("/api/users/me", headers=old).status_code == 401
+    assert client.get("/api/users/me", headers=_login("sesion@test.com", "otra-clave-1")).status_code == 200
+
+
+def test_reset_link_is_single_use(sent_resets):
+    _register("unavez")
+    client.post("/api/auth/forgot-password", json={"email": "unavez@test.com"})
+    token = sent_resets[0][1]
+    assert client.post("/api/auth/reset-password", json={"token": token, "new_password": "clave-nueva-1"}).status_code == 200
+    assert client.post("/api/auth/reset-password", json={"token": token, "new_password": "clave-nueva-2"}).status_code == 400
+
+
+def test_one_reset_email_per_minute(sent_resets):
+    _register("spam")
+    headers = _login("spam@test.com")
+    assert client.post("/api/users/me/password-reset", headers=headers).status_code == 200
+    assert client.post("/api/users/me/password-reset", headers=headers).status_code == 429
+    # Por «¿Has olvidado tu contraseña?» la respuesta es la misma, pero no se manda otro correo
+    assert client.post("/api/auth/forgot-password", json={"email": "spam@test.com"}).status_code == 200
+    assert len(sent_resets) == 1
+
+
+def test_password_endpoints_refuse_when_emails_are_off(monkeypatch):
+    from app.routers import auth as auth_router
+    monkeypatch.setattr(auth_router, "emails_enabled", lambda: False)
+    _register("sincorreo")
+    assert client.post("/api/auth/forgot-password", json={"email": "sincorreo@test.com"}).status_code == 503
+    assert client.post("/api/users/me/password-reset", headers=_login("sincorreo@test.com")).status_code == 503
+
+
+def test_passwords_need_8_characters(sent_resets):
+    res = client.post("/api/auth/register", json={"email": "corta@test.com", "username": "corta", "password": "1234567", "full_name": "C"})
+    assert res.status_code == 422
+    _register("corta2")
+    client.post("/api/auth/forgot-password", json={"email": "corta2@test.com"})
+    assert client.post("/api/auth/reset-password", json={"token": sent_resets[0][1], "new_password": ""}).status_code == 422
+
+
+def test_reset_email_uses_app_url_and_escapes_names(monkeypatch):
+    from app.services import email as email_service
+    sent = []
+    monkeypatch.setattr(email_service, "SMTP_HOST", "smtp.example")
+    monkeypatch.setattr(email_service.smtplib, "SMTP", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no SMTP en tests")))
+    monkeypatch.setattr(email_service, "send_email", lambda to, subject, text, html: sent.append((text, html)))
+    email_service.send_reset_password_email("a@test.com", '<a href="http://malo">pulsa</a>', "TOKEN123")
+    text, html = sent[0]
+    assert "https://bolos.example/reset-password?token=TOKEN123" in text
+    assert '<a href="http://malo">' not in html and "&lt;a href=" in html

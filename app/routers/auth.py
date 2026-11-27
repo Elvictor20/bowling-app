@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
+import hashlib
 import secrets
 from .. import models, schemas, auth, database
-from ..services.email import send_welcome_email, send_reset_password_email
+from ..services.email import emails_enabled, send_welcome_email, send_reset_password_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -30,7 +31,8 @@ def register(user: schemas.UserCreate, background_tasks: BackgroundTasks, db: Se
     db.commit()
     db.refresh(new_user)
     
-    background_tasks.add_task(send_welcome_email, new_user.email, new_user.full_name)
+    if emails_enabled():
+        background_tasks.add_task(send_welcome_email, new_user.email, new_user.full_name)
     
     return new_user
 
@@ -44,22 +46,37 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": auth.token_for(user), "token_type": "bearer"}
 
-def start_password_reset(user: models.User, background_tasks: BackgroundTasks, db: Session):
-    """Genera un enlace de un solo uso (20 minutos) y lo envía por correo."""
+RESET_LINK_MINUTES = 20
+RESET_COOLDOWN = timedelta(minutes=1)  # como mucho un correo por minuto y cuenta
+
+
+def hash_reset_token(token: str) -> str:
+    # En la base de datos solo se guarda el hash: quien la lea no puede usar los enlaces
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def require_emails():
+    if not emails_enabled():
+        raise HTTPException(status_code=503, detail="El envío de correos no está configurado en el servidor. Habla con el administrador.")
+
+
+def start_password_reset(user: models.User, background_tasks: BackgroundTasks, db: Session) -> bool:
+    """Genera un enlace de un solo uso y lo envía por correo. Devuelve False si se pidió otro hace menos de un minuto."""
+    now = datetime.utcnow()
+    if user.reset_token_expires_at and now < user.reset_token_expires_at - timedelta(minutes=RESET_LINK_MINUTES) + RESET_COOLDOWN:
+        return False
     token = secrets.token_urlsafe(32)
-    user.reset_token = token
-    user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=20)
+    user.reset_token = hash_reset_token(token)
+    user.reset_token_expires_at = now + timedelta(minutes=RESET_LINK_MINUTES)
     db.commit()
     background_tasks.add_task(send_reset_password_email, user.email, user.full_name, token)
+    return True
 
 @router.post("/forgot-password")
 def forgot_password(req: schemas.ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db)):
+    require_emails()
     user = db.query(models.User).filter(models.User.email == req.email).first()
     if user:
         start_password_reset(user, background_tasks, db)
@@ -70,7 +87,7 @@ def forgot_password(req: schemas.ForgotPasswordRequest, background_tasks: Backgr
 @router.post("/reset-password")
 def reset_password(req: schemas.ResetPasswordRequest, db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(
-        models.User.reset_token == req.token
+        models.User.reset_token == hash_reset_token(req.token)
     ).first()
     
     if not user or not user.reset_token_expires_at or user.reset_token_expires_at < datetime.utcnow():

@@ -1,3 +1,4 @@
+import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Optional
@@ -31,6 +32,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+def password_fingerprint(password_hash: str) -> str:
+    """Huella de la contraseña guardada: al cambiar la contraseña cambia y los tokens anteriores dejan de valer."""
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+
+def token_for(user) -> str:
+    return create_access_token(
+        data={"sub": user.username, "pv": password_fingerprint(user.password_hash)},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -40,11 +51,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
+        fingerprint = payload.get("pv")
+        if username is None or fingerprint is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
     user = db.query(models.User).filter(models.User.username == username).first()
-    if user is None:
+    if user is None or fingerprint != password_fingerprint(user.password_hash):
         raise credentials_exception
     return user

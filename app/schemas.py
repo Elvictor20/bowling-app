@@ -5,12 +5,19 @@ from datetime import datetime
 from .models import RoleEnum
 
 # Users
+def check_password(v: str) -> str:
+    if not 8 <= len(v) <= 128:
+        raise ValueError("La contraseña debe tener entre 8 y 128 caracteres")
+    return v
+
 class UserCreate(BaseModel):
     email: EmailStr
     username: str
     password: str
     full_name: str
     phone_number: Optional[str] = None
+
+    _password = field_validator("password")(check_password)
 
 class UserResponse(BaseModel):
     id: int
@@ -65,6 +72,8 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+    _password = field_validator("new_password")(check_password)
 
 # Rooms
 class RoomCreate(BaseModel):
