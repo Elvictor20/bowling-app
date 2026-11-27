@@ -89,9 +89,10 @@
                             <span>•</span>
                             <span x-text="entry.games_played + (entry.games_played === 1 ? ' partida' : ' partidas')"></span>
                         </div>
-                        <div class="text-xs text-gray-500 mt-0.5">
-                            Plenos: <span x-text="entry.total_strikes"></span>
-                            · Semiplenos: <span x-text="entry.total_spares"></span>
+                        <div class="text-xs text-gray-500 mt-0.5"
+                            :title="entry.total_strikes + ' plenos, ' + entry.total_spares + ' semiplenos'">
+                            🎳 <span class="font-semibold text-gray-300" x-text="entry.total_strikes"></span>
+                            · 🔲 <span class="font-semibold text-gray-300" x-text="entry.total_spares"></span>
                         </div>
                     </div>
                 </div>
@@ -586,7 +587,7 @@
                         await this.loadLeaderboard(); // Recargar para ver al nuevo miembro con 0 puntos
                     } else {
                         const data = await res.json();
-                        this.inviteError = data.detail || 'Error al añadir';
+                        this.inviteError = (Array.isArray(data.detail) ? data.detail.map(d => String(d.msg).replace(/^Value error, /, '')).join('. ') : data.detail) || 'Error al añadir';
                     }
                 } catch (e) {
                     this.inviteError = 'Error de conexión';

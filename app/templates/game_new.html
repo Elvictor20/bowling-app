@@ -367,7 +367,7 @@ function gameForm(roomId) {
                     window.location.href = `/rooms/${this.roomId}`;
                 } else {
                     const data = await res.json();
-                    this.errorMsg = data.detail || 'Error al guardar la partida';
+                    this.errorMsg = (Array.isArray(data.detail) ? data.detail.map(d => String(d.msg).replace(/^Value error, /, '')).join('. ') : data.detail) || 'Error al guardar la partida';
                 }
             } catch (e) {
                 this.errorMsg = 'Error de conexión';
