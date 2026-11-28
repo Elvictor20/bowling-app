@@ -1,0 +1,339 @@
+<!-- Pestaña Estadísticas (componente roomStats() en /static/js/room-stats.js) -->
+<div x-data="roomStats()" x-init="initStats()" class="space-y-4">
+
+    <!-- Periodo -->
+    <div class="flex gap-1.5 overflow-x-auto hide-scrollbar -mx-1 px-1">
+        <template x-for="p in periods" :key="p.id">
+            <button @click="period = p.id"
+                :class="period === p.id ? 'bg-gray-100 text-gray-900' : 'bg-surface text-gray-400 border-gray-800'"
+                class="shrink-0 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition" x-text="p.label"></button>
+        </template>
+    </div>
+
+    <!-- Secciones -->
+    <div class="grid grid-cols-4 gap-1 bg-surface p-1 rounded-2xl border border-gray-800">
+        <template x-for="t in statsTabs" :key="t.id">
+            <button @click="statsTab = t.id"
+                :class="statsTab === t.id ? 'bg-primary text-white shadow' : 'text-gray-400'"
+                class="py-2 rounded-xl text-[12px] font-semibold transition" x-text="t.label"></button>
+        </template>
+    </div>
+
+    <div x-show="!fgames.length" class="p-8 text-center text-gray-500 bg-surface rounded-2xl border border-dashed border-gray-700">
+        No hay partidas en este periodo.
+    </div>
+
+    <!-- ===================== RESUMEN ===================== -->
+    <div x-show="statsTab === 'resumen' && fgames.length" class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+            <template x-for="card in [
+                { icon: '🏆', title: 'Récord', r: records.highest, big: records.highest?.value, sub: records.highest && fmtDate(records.highest.date), tone: 'from-yellow-600/25 border-yellow-500/20 text-yellow-400' },
+                { icon: '🎯', title: 'Rey del pleno', r: strikeKing, big: strikeKing && dec(strikeKing.value), sub: 'plenos por partida', tone: 'from-purple-600/25 border-purple-500/20 text-purple-300' },
+                { icon: '📈', title: 'Más en forma', r: mostFit, big: mostFit && signed(mostFit.value), sub: mostFit ? 'sobre su media en las 3 últimas' : 'Hacen falta 4 partidas', tone: 'from-green-600/25 border-green-500/20 text-green-400' },
+                { icon: '⚡', title: 'Más plenos', r: records.mostStrikes, big: records.mostStrikes?.value, sub: 'en una partida', tone: 'from-sky-600/25 border-sky-500/20 text-sky-300' },
+                { icon: '🔲', title: 'Más semiplenos', r: records.mostSpares, big: records.mostSpares?.value, sub: 'en una partida', tone: 'from-indigo-600/25 border-indigo-500/20 text-indigo-300' },
+                { icon: '🗓️', title: 'Más partidas', r: records.mostGames, big: records.mostGames?.value, sub: 'jugadas', tone: 'from-teal-600/25 border-teal-500/20 text-teal-300' },
+                { icon: '🚀', title: 'Mayor mejora', r: records.improvement, big: records.improvement && signed(records.improvement.value), sub: records.improvement ? fmtMonth(records.improvement.from) + ' → ' + fmtMonth(records.improvement.to) : 'Hace falta jugar 2 meses', tone: 'from-orange-600/25 border-orange-500/20 text-orange-300' },
+                { icon: '🥔', title: 'La Torta', r: records.lowest, big: records.lowest?.value, sub: records.lowest ? 'peor partida · ' + fmtDate(records.lowest.date) : '', tone: 'from-gray-600/25 border-gray-500/20 text-gray-300' },
+            ]" :key="card.title">
+                <div class="bg-gradient-to-br to-surface rounded-2xl p-4 border relative overflow-hidden min-w-0" :class="card.tone">
+                    <div class="absolute -right-2 -top-2 text-5xl opacity-10" x-text="card.icon"></div>
+                    <div class="text-[11px] font-bold uppercase tracking-wider mb-1" x-text="card.title"></div>
+                    <template x-if="card.r">
+                        <div class="min-w-0">
+                            <div class="text-3xl font-black text-gray-100 leading-tight" x-text="card.big"></div>
+                            <div class="text-sm font-bold text-gray-200 truncate flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${colorFor(card.r.user_id)}`"></span>
+                                <span class="truncate" x-text="card.r.name"></span>
+                            </div>
+                            <div class="text-[11px] text-gray-400 truncate" x-text="card.sub"></div>
+                        </div>
+                    </template>
+                    <template x-if="!card.r">
+                        <div class="text-gray-500 text-xs italic pt-2" x-text="card.sub || 'Faltan partidas'"></div>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        <!-- Rachas -->
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Rachas</h3>
+            <div class="space-y-3">
+                <template x-for="s in streaks" :key="s.user_id">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                            :style="`background:${colorFor(s.user_id)}22;color:${colorFor(s.user_id)};border:1px solid ${colorFor(s.user_id)}55`"
+                            x-text="s.name.charAt(0).toUpperCase()"></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-semibold text-gray-100 text-sm flex items-center gap-1.5">
+                                <span class="truncate" x-text="s.name"></span>
+                                <span x-show="s.onFire" class="text-[10px] font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded-full shrink-0">🔥 en racha</span>
+                            </div>
+                            <div class="text-xs text-gray-400">
+                                <span x-text="s.currentWins + (s.currentWins === 1 ? ' victoria seguida' : ' victorias seguidas')"></span>
+                                <span class="text-gray-600">·</span>
+                                récord <span x-text="s.bestWins"></span>
+                            </div>
+                            <div class="text-xs text-gray-400"
+                                x-text="s.aboveAvg + (s.aboveAvg === 1 ? ' partida seguida' : ' partidas seguidas') + ' por encima de su media'"></div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== EVOLUCIÓN ===================== -->
+    <div x-show="statsTab === 'evolucion' && fgames.length" class="space-y-4">
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Puntuaciones</h3>
+                <div class="flex bg-background rounded-full p-0.5 border border-gray-800 text-[11px] font-semibold">
+                    <button @click="mode = 'points'" :class="mode === 'points' ? 'bg-gray-700 text-white' : 'text-gray-400'" class="px-2.5 py-1 rounded-full">Partidas</button>
+                    <button @click="mode = 'trend'" :class="mode === 'trend' ? 'bg-gray-700 text-white' : 'text-gray-400'" class="px-2.5 py-1 rounded-full">Tendencia</button>
+                </div>
+            </div>
+            <!-- Jugadores visibles -->
+            <div class="flex flex-wrap gap-1.5">
+                <button x-show="playedMembers.some(m => m.user_id === currentUserId)" @click="soloYo = !soloYo"
+                    :class="soloYo ? 'bg-gray-100 text-gray-900 border-gray-100' : 'text-gray-300 border-gray-700'"
+                    class="px-2.5 py-1 rounded-full border text-xs font-semibold">Solo yo</button>
+                <template x-for="m in playedMembers" :key="m.user_id">
+                    <button @click="togglePlayer(m.user_id)"
+                        :style="isVisible(m.user_id) ? `border-color:${colorFor(m.user_id)};background:${colorFor(m.user_id)}22` : ''"
+                        :class="isVisible(m.user_id) ? 'text-gray-100' : 'text-gray-500 border-gray-800 line-through'"
+                        class="px-2.5 py-1 rounded-full border text-xs font-semibold flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full" :style="`background:${colorFor(m.user_id)}`"></span>
+                        <span x-text="m.user.full_name"></span>
+                    </button>
+                </template>
+            </div>
+            <div class="relative h-[280px]"><canvas id="evoChart"></canvas></div>
+            <p class="text-[11px] text-gray-500" x-text="mode === 'trend'
+                ? 'Tendencia: media de las 3 últimas partidas de cada uno. Toca la gráfica para ver una partida.'
+                : '⭐ récord del periodo. Toca la gráfica para ver la clasificación de esa partida.'"></p>
+
+            <!-- Partida tocada -->
+            <div x-show="selectedGame" x-transition class="bg-background rounded-xl border border-gray-800 p-3">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="text-sm font-bold text-gray-100" x-text="selectedGame && selectedGame.label"></div>
+                    <button @click="selectedGame = null" class="text-gray-500 text-xs px-2">Cerrar</button>
+                </div>
+                <template x-for="sc in (selectedGame ? selectedGame.ranking : [])" :key="sc.user_id">
+                    <div class="flex items-center gap-2 text-sm py-1">
+                        <span class="w-6 text-center font-bold"
+                            :class="{'text-yellow-400': sc.rank === 1, 'text-gray-300': sc.rank === 2, 'text-amber-600': sc.rank === 3, 'text-gray-500': sc.rank > 3}"
+                            x-text="'#' + sc.rank"></span>
+                        <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${colorFor(sc.user_id)}`"></span>
+                        <span class="flex-1 truncate text-gray-200" x-text="nameOf(sc.user_id)"></span>
+                        <span class="text-xs text-gray-400 whitespace-nowrap">🎳 <span x-text="sc.strikes"></span> · 🔲 <span x-text="sc.spares"></span></span>
+                        <span class="w-14 text-right font-bold text-primary" x-text="sc.score + ' pts'"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Carrera del ranking</h3>
+            <p class="text-[11px] text-gray-500 mb-3">Posición en el top de Puntuación después de cada partida.</p>
+            <div class="relative h-[220px]"><canvas id="raceChart"></canvas></div>
+        </div>
+
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Victorias acumuladas</h3>
+            <p class="text-[11px] text-gray-500 mb-3">Las partidas de un solo jugador no cuentan.</p>
+            <div class="relative h-[220px]"><canvas id="winsChart"></canvas></div>
+        </div>
+
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Media de puntos por mes</h3>
+            <p class="text-[11px] text-gray-500 mb-3">¿Quién mejora con el tiempo?</p>
+            <div class="relative h-[220px]"><canvas id="monthChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- ===================== JUGADORES ===================== -->
+    <div x-show="statsTab === 'jugadores' && fgames.length" class="space-y-4">
+        <!-- Ficha -->
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Ficha</h3>
+                <select x-model="cardUser" class="bg-background border border-gray-700 rounded-xl text-sm text-gray-100 px-3 py-1.5 max-w-[60%]">
+                    <template x-for="m in playedMembers" :key="m.user_id">
+                        <option :value="m.user_id" :selected="m.user_id === cardUserId()" x-text="m.user.full_name"></option>
+                    </template>
+                </select>
+            </div>
+            <template x-if="card.games">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <template x-for="k in [
+                            { l: 'Partidas', v: card.games },
+                            { l: 'Media', v: dec(card.avgPoints) },
+                            { l: 'Puntuación', v: dec(card.avgValue) },
+                            { l: 'Mejor', v: card.best.score, s: fmtDate(card.best.date) },
+                            { l: 'Peor', v: card.worst.score, s: fmtDate(card.worst.date) },
+                            { l: 'Victorias', v: card.wins, s: card.winPct === null ? '' : card.winPct + ' %' },
+                            { l: 'Plenos/partida', v: dec(card.strikesPerGame) },
+                            { l: 'Semipl./partida', v: dec(card.sparesPerGame) },
+                            { l: 'Tendencia', v: card.trend === null ? '–' : (card.trend >= 0 ? '↑ ' : '↓ ') + signed(card.trend), s: card.trend === null ? 'mín. 4 partidas' : 'últ. 3 vs media' },
+                        ]" :key="k.l">
+                            <div class="bg-background rounded-xl border border-gray-800 py-2.5 px-1">
+                                <div class="text-[10px] uppercase tracking-wide text-gray-500 font-bold" x-text="k.l"></div>
+                                <div class="text-lg font-black text-gray-100" x-text="k.v"></div>
+                                <div class="text-[10px] text-gray-500 h-3.5" x-text="k.s || ''"></div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="flex items-center justify-between bg-background rounded-xl border border-gray-800 px-3 py-2.5">
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wide text-gray-500 font-bold">Regularidad</div>
+                            <div class="text-sm font-bold text-gray-100" x-text="card.consistency"></div>
+                            <div class="text-[10px] text-gray-500" x-show="card.stdev !== null" x-text="'± ' + dec(card.stdev) + ' puntos de una partida a otra'"></div>
+                        </div>
+                        <!-- Últimas 5 -->
+                        <div class="flex items-end gap-1 h-12" title="Últimas 5 partidas">
+                            <template x-for="(v, i) in card.last5" :key="i">
+                                <div class="w-4 rounded-t" :style="`height:${Math.max(8, v / 300 * 48)}px;background:${colorFor(cardUserId())}${i === card.last5.length - 1 ? '' : '88'}`" :title="v"></div>
+                            </template>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-[11px] text-gray-500 mb-2">Cuántas partidas en cada tramo de puntos</div>
+                        <div class="relative h-[180px]"><canvas id="distChart"></canvas></div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Cara a cara -->
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4 space-y-3">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Cara a cara</h3>
+            <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <select x-model="h2hA" class="bg-background border border-gray-700 rounded-xl text-sm text-gray-100 px-2 py-1.5 min-w-0">
+                    <template x-for="m in playedMembers" :key="m.user_id">
+                        <option :value="m.user_id" :selected="m.user_id === h2hIds()[0]" x-text="m.user.full_name"></option>
+                    </template>
+                </select>
+                <span class="text-xs font-black text-gray-500">VS</span>
+                <select x-model="h2hB" class="bg-background border border-gray-700 rounded-xl text-sm text-gray-100 px-2 py-1.5 min-w-0">
+                    <template x-for="m in playedMembers" :key="m.user_id">
+                        <option :value="m.user_id" :selected="m.user_id === h2hIds()[1]" x-text="m.user.full_name"></option>
+                    </template>
+                </select>
+            </div>
+            <template x-if="h2h && h2h.games">
+                <div class="space-y-3">
+                    <div class="grid grid-cols-3 text-center items-end">
+                        <div><div class="text-4xl font-black" :style="`color:${colorFor(h2hIds()[0])}`" x-text="h2h.winsA"></div><div class="text-[11px] text-gray-500">victorias</div></div>
+                        <div class="text-xs text-gray-500 pb-3"><span x-text="h2h.games"></span> partidas juntos<template x-if="h2h.ties"><span> · <span x-text="h2h.ties"></span> empates</span></template></div>
+                        <div><div class="text-4xl font-black" :style="`color:${colorFor(h2hIds()[1])}`" x-text="h2h.winsB"></div><div class="text-[11px] text-gray-500">victorias</div></div>
+                    </div>
+                    <div class="h-2 rounded-full overflow-hidden flex bg-gray-800">
+                        <div :style="`width:${h2h.winsA / h2h.games * 100}%;background:${colorFor(h2hIds()[0])}`"></div>
+                        <div :style="`width:${h2h.ties / h2h.games * 100}%`" class="bg-gray-600"></div>
+                        <div :style="`width:${h2h.winsB / h2h.games * 100}%;background:${colorFor(h2hIds()[1])}`"></div>
+                    </div>
+                    <div class="grid grid-cols-3 text-center text-sm">
+                        <div class="font-bold text-gray-100" x-text="dec(h2h.avgA)"></div><div class="text-[11px] text-gray-500">media juntos</div><div class="font-bold text-gray-100" x-text="dec(h2h.avgB)"></div>
+                        <div class="font-bold text-gray-100" x-text="h2h.bestA"></div><div class="text-[11px] text-gray-500">mejor partida</div><div class="font-bold text-gray-100" x-text="h2h.bestB"></div>
+                    </div>
+                    <div class="border-t border-gray-800 pt-2">
+                        <div class="text-[11px] text-gray-500 mb-1">Últimos enfrentamientos</div>
+                        <template x-for="(r, i) in h2h.recent" :key="i">
+                            <div class="grid grid-cols-3 text-center text-sm py-1">
+                                <span :class="r.winner === h2hIds()[0] ? 'font-black text-gray-100' : 'text-gray-500'" x-text="r.a"></span>
+                                <span class="text-[11px] text-gray-500" x-text="fmtDate(r.date)"></span>
+                                <span :class="r.winner === h2hIds()[1] ? 'font-black text-gray-100' : 'text-gray-500'" x-text="r.b"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+            <div x-show="h2h && !h2h.games" class="text-sm text-gray-500 italic text-center py-2">No han jugado ninguna partida juntos en este periodo.</div>
+            <div x-show="playedMembers.length < 2" class="text-sm text-gray-500 italic text-center py-2">Hacen falta al menos 2 jugadores.</div>
+        </div>
+
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Plenos y semiplenos por partida</h3>
+            <div class="relative" :style="`height:${Math.max(160, marks.length * 52)}px`"><canvas id="marksChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- ===================== NOCHES ===================== -->
+    <div x-show="statsTab === 'noches' && fgames.length" class="space-y-4">
+        <!-- Calendario -->
+        <div class="bg-surface rounded-2xl border border-gray-800 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <button @click="moveCal(-1)" :disabled="calMonths.indexOf(currentCalMonth()) <= 0"
+                    class="w-9 h-9 rounded-full bg-background border border-gray-800 text-gray-300 disabled:opacity-30">‹</button>
+                <h3 class="text-sm font-bold text-gray-100 capitalize" x-text="currentCalMonth() && fmtMonth(currentCalMonth())"></h3>
+                <button @click="moveCal(1)" :disabled="calMonths.indexOf(currentCalMonth()) >= calMonths.length - 1"
+                    class="w-9 h-9 rounded-full bg-background border border-gray-800 text-gray-300 disabled:opacity-30">›</button>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-gray-500 mb-1">
+                <span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span>
+            </div>
+            <div class="grid grid-cols-7 gap-1">
+                <template x-for="c in calCells()" :key="c.id">
+                    <button :disabled="!c.night" @click="c.night && pickNight(c.night)"
+                        class="aspect-square rounded-lg text-xs flex flex-col items-center justify-center relative"
+                        :class="c.night ? (selectedNight === c.night.key ? 'bg-primary text-white font-bold' : 'bg-purple-600/25 text-purple-100 font-bold') : (c.day ? 'text-gray-600' : '')">
+                        <span x-text="c.day || ''"></span>
+                        <span x-show="c.night" class="text-[9px] leading-none opacity-80" x-text="c.night ? '🎳' + c.night.games : ''"></span>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- Noches -->
+        <template x-for="n in nights" :key="n.key">
+            <div :id="'night-' + n.key" class="bg-surface rounded-2xl border p-4 scroll-mt-20"
+                :class="selectedNight === n.key ? 'border-primary' : 'border-gray-800'">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div class="min-w-0">
+                        <div class="font-bold text-gray-100 first-letter:uppercase" x-text="fmtNight(n.key)"></div>
+                        <div class="text-xs text-gray-500" x-text="n.games + (n.games === 1 ? ' partida' : ' partidas')"></div>
+                    </div>
+                    <button @click="shareNight(n)" class="shrink-0 text-xs font-semibold text-primary border border-purple-500/30 bg-purple-600/10 rounded-full px-3 py-1.5">
+                        Compartir
+                    </button>
+                </div>
+                <div x-show="n.winner" class="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2 mb-3">
+                    <span class="text-xl">👑</span>
+                    <div class="min-w-0">
+                        <div class="text-[10px] font-bold text-yellow-400 uppercase tracking-wider">Ganador de la noche</div>
+                        <div class="font-bold text-gray-100 truncate" x-text="n.winner && n.winner.name"></div>
+                    </div>
+                </div>
+                <template x-for="r in n.ranking" :key="r.user_id">
+                    <div class="flex items-center gap-2 text-sm py-1">
+                        <span class="w-6 text-center font-bold"
+                            :class="{'text-yellow-400': r.rank === 1, 'text-gray-300': r.rank === 2, 'text-amber-600': r.rank === 3, 'text-gray-500': r.rank > 3}"
+                            x-text="'#' + r.rank"></span>
+                        <span class="w-2 h-2 rounded-full shrink-0" :style="`background:${colorFor(r.user_id)}`"></span>
+                        <span class="flex-1 min-w-0 truncate text-gray-200" x-text="r.name"></span>
+                        <span class="text-xs text-gray-400 whitespace-nowrap">🏆 <span x-text="r.wins"></span> · máx <span x-text="r.best"></span></span>
+                        <span class="w-12 text-right font-bold text-primary" x-text="dec(r.avgValue)"></span>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <p class="text-[11px] text-gray-500 text-center">Las partidas de antes de las 6:00 cuentan para la noche anterior. Gana la noche quien tiene mejor puntuación media en ella.</p>
+    </div>
+
+    <!-- Imagen para compartir -->
+    <div x-show="share.open" x-transition.opacity class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" @click.self="share.open = false">
+        <div class="bg-surface rounded-2xl border border-gray-700 p-4 w-full max-w-sm space-y-3">
+            <img :src="share.url" alt="Resumen de la noche" class="w-full rounded-xl border border-gray-800">
+            <p class="text-[11px] text-gray-500 text-center">También puedes mantener pulsada la imagen para guardarla.</p>
+            <div class="flex gap-2">
+                <button @click="share.open = false" class="flex-1 py-2.5 rounded-full border border-gray-700 text-gray-300 font-semibold text-sm">Cerrar</button>
+                <button x-show="share.canShare" @click="sendShare()" class="flex-1 py-2.5 rounded-full bg-primary text-white font-bold text-sm">Compartir</button>
+                <a x-show="!share.canShare" :href="share.url" :download="share.file ? share.file.name : 'bolos.png'"
+                    class="flex-1 py-2.5 rounded-full bg-primary text-white font-bold text-sm text-center">Descargar</a>
+            </div>
+        </div>
+    </div>
+</div>

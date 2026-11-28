@@ -33,19 +33,19 @@
         <button @click="activeTab = 'history'"
             :class="activeTab === 'history' ? 'bg-gray-800 text-white shadow' : 'text-gray-400 hover:text-gray-200'"
             class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Historial</button>
-        <button @click="activeTab = 'stats'; loadStatsChart()"
+        <button @click="activeTab = 'stats'"
             :class="activeTab === 'stats' ? 'bg-gray-800 text-white shadow' : 'text-gray-400 hover:text-gray-200'"
-            class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Gráfico</button>
+            class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap snap-start transition">Estadísticas</button>
     </div>
 
     <!-- Leaderboard -->
     <div x-show="activeTab === 'leaderboard'" class="space-y-3">
         <!-- Tipo de top -->
-        <div class="grid grid-cols-4 gap-1.5">
+        <div class="grid grid-cols-5 gap-1">
             <template x-for="t in tops" :key="t.by">
                 <button @click="selectTop(t.by)"
                     :class="topBy === t.by ? 'bg-primary text-white border-primary' : 'bg-surface text-gray-400 border-gray-800 hover:text-gray-200'"
-                    class="py-2 px-1 rounded-xl border text-xs font-semibold transition flex flex-col items-center gap-0.5">
+                    class="py-2 px-0.5 rounded-xl border text-[11px] font-semibold transition flex flex-col items-center gap-0.5 min-w-0">
                     <span class="text-base leading-none" x-text="t.icon"></span>
                     <span x-text="t.label"></span>
                 </button>
@@ -63,8 +63,8 @@
 
                 <!-- Avatar & Info -->
                 <div class="flex-1 flex items-center ml-2 min-w-0">
-                    <div
-                        class="w-10 h-10 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-primary font-bold flex-shrink-0">
+                    <div :style="avatarStyle(entry.user_id)"
+                        class="w-10 h-10 rounded-full flex items-center justify-center font-bold flex-shrink-0">
                         <span x-text="entry.full_name.charAt(0).toUpperCase()"></span>
                     </div>
                     <div class="ml-3 truncate">
@@ -113,8 +113,8 @@
                 <div class="ml-4 flex-shrink-0 text-right">
                     <div class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-400 to-primary"
                         x-text="topValue(entry)"></div>
-                    <div x-show="currentTop().unit" class="text-[10px] text-gray-500 uppercase font-bold"
-                        x-text="currentTop().unit"></div>
+                    <div x-show="currentTop().unit || (topBy === 'handicap' && entry.games_played)" class="text-[10px] text-gray-500 uppercase font-bold"
+                        x-text="topBy === 'handicap' ? 'hcp +' + entry.handicap : currentTop().unit"></div>
                 </div>
             </div>
         </template>
@@ -155,8 +155,8 @@
                                     <span class="w-6 shrink-0 text-center font-bold"
                                         :class="{'text-yellow-400': sc.rank === 1, 'text-gray-300': sc.rank === 2, 'text-amber-600': sc.rank === 3, 'text-gray-500': sc.rank > 3}"
                                         x-text="'#' + sc.rank"></span>
-                                    <div class="w-6 h-6 shrink-0 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-[11px] font-bold text-primary"
-                                        x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
+                                    <div class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold"
+                                        :style="avatarStyle(sc.user_id)" x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
                                     <span class="flex-1 min-w-0 truncate font-medium text-gray-200"
                                         x-text="sc.user.full_name"></span>
                                     <span class="shrink-0 text-xs text-gray-400 whitespace-nowrap"
@@ -191,8 +191,8 @@
                         <template x-for="sc in game.scores">
                             <div class="overflow-x-auto pb-2 hide-scrollbar">
                                 <div class="font-bold text-gray-200 mb-3 flex items-center gap-2">
-                                    <div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-xs text-white"
-                                        x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
+                                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                                        :style="avatarStyle(sc.user_id)" x-text="sc.user.full_name.charAt(0).toUpperCase()"></div>
                                     <span x-text="sc.user.full_name"></span>
                                     <span class="text-primary" x-text="sc.score + ' pts'"></span>
                                 </div>
@@ -243,83 +243,8 @@
     </div>
 
     <!-- Estadísticas -->
-    <div x-show="activeTab === 'stats'" class="space-y-4">
-
-        <!-- KPI Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" x-show="statsData">
-            <!-- Highest Score -->
-            <div
-                class="bg-gradient-to-br from-yellow-600/20 to-surface rounded-2xl p-5 border border-yellow-500/20 shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 text-6xl opacity-10">🏆</div>
-                <div class="text-xs font-bold text-yellow-500 uppercase tracking-wider mb-2">Récord de Sala</div>
-                <template x-if="statsData?.records?.highest_score">
-                    <div>
-                        <div class="text-4xl font-black text-gray-100" x-text="statsData.records.highest_score.score">
-                        </div>
-                        <div class="text-sm text-gray-400 mt-1 flex items-center gap-1">
-                            <span>por</span> <span class="font-bold text-gray-200"
-                                x-text="statsData.records.highest_score.username"></span>
-                        </div>
-                    </div>
-                </template>
-                <template x-if="!statsData?.records?.highest_score">
-                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
-                </template>
-            </div>
-
-            <!-- Strike King -->
-            <div
-                class="bg-gradient-to-br from-purple-600/20 to-surface rounded-2xl p-5 border border-purple-500/20 shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 text-6xl opacity-10">🎯</div>
-                <div class="text-xs font-bold text-primary uppercase tracking-wider mb-2">Rey del Pleno</div>
-                <template x-if="statsData?.records?.strike_king">
-                    <div>
-                        <div class="text-4xl font-black text-gray-100"
-                            x-text="statsData.records.strike_king.avg_strikes"></div>
-                        <div class="text-sm text-gray-400 mt-1 flex items-center gap-1">
-                            <span class="font-bold text-gray-200"
-                                x-text="statsData.records.strike_king.username"></span> <span
-                                class="text-xs">plenos/partida</span>
-                        </div>
-                    </div>
-                </template>
-                <template x-if="!statsData?.records?.strike_king">
-                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
-                </template>
-            </div>
-
-            <!-- Most Fit -->
-            <div
-                class="bg-gradient-to-br from-green-600/20 to-surface rounded-2xl p-5 border border-green-500/20 shadow-sm relative overflow-hidden">
-                <div class="absolute -right-4 -top-4 text-6xl opacity-10">📈</div>
-                <div class="text-xs font-bold text-success uppercase tracking-wider mb-2">Más en Forma</div>
-                <template x-if="statsData?.records?.most_fit">
-                    <div>
-                        <div class="text-2xl font-black text-gray-100 truncate"
-                            x-text="statsData.records.most_fit.username"></div>
-                        <div class="text-sm text-success font-semibold mt-1 flex items-center gap-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                            </svg>
-                            +<span x-text="statsData.records.most_fit.improvement"></span> pts
-                        </div>
-                    </div>
-                </template>
-                <template x-if="!statsData?.records?.most_fit">
-                    <div class="text-gray-500 text-sm italic">Faltan partidas</div>
-                </template>
-            </div>
-        </div>
-
-        <!-- Gráfico -->
-        <div class="bg-surface rounded-2xl p-4 sm:p-6 border border-gray-800 shadow-sm">
-            <h3 class="font-bold text-sm text-gray-300 uppercase tracking-wider mb-6 text-center">Evolución de
-                Puntuaciones</h3>
-            <div class="relative h-[300px] sm:h-[400px] w-full">
-                <canvas id="statsChart"></canvas>
-            </div>
-        </div>
+    <div x-show="activeTab === 'stats'">
+        {% include "partials/room_stats.html" %}
     </div>
 
     <!-- Modal Invitar -->
@@ -343,7 +268,12 @@
     </div>
 </div>
 
+<script src="/static/js/stats.js"></script>
+<script src="/static/js/room-stats.js"></script>
 <script>
+    // Colores de los jugadores: los mismos en el ranking, el historial y las estadísticas
+    const PLAYER_COLORS = ['#a78bfa', '#fbbf24', '#34d399', '#38bdf8', '#fb7185', '#fb923c', '#a3e635', '#e879f9', '#2dd4bf', '#f87171'];
+
     function roomDetail(roomId) {
         return {
             roomId: roomId,
@@ -355,6 +285,8 @@
                   note: 'Puntuación = (puntos + 5 por semipleno + 10 por pleno) ÷ partidas jugadas' },
                 { by: 'strikes', icon: '🎳', label: 'Plenos', unit: 'plenos', note: '' },
                 { by: 'spares', icon: '🔲', label: 'Semiplenos', unit: 'semiplenos', note: '' },
+                { by: 'handicap', icon: '⚖️', label: 'Hándicap', unit: '',
+                  note: 'Media de puntos + hándicap. El hándicap es el 90 % de lo que te falta para 200 de media, calculado con tus partidas anteriores: premia superar tu propia media. La primera partida va sin hándicap.' },
                 { by: 'wins', icon: '🏆', label: 'Victorias', unit: 'victorias',
                   note: 'Gana quien hace más puntos + 5 por semipleno + 10 por pleno en la partida. No cuentan las partidas de un solo jugador.' },
             ],
@@ -362,6 +294,7 @@
             topValue(entry) {
                 if (!entry.games_played) return '–';
                 if (this.topBy === 'average') return entry.average.toFixed(1);
+                if (this.topBy === 'handicap') return entry.handicap_average.toFixed(1);
                 return { strikes: entry.total_strikes, spares: entry.total_spares, wins: entry.wins }[this.topBy];
             },
             async selectTop(by) {
@@ -370,10 +303,17 @@
             },
             games: [],
             currentUserId: null,
+            colorFor(userId) {
+                const ids = this.members.map(m => m.user_id).sort((a, b) => a - b);
+                const i = ids.indexOf(userId);
+                return PLAYER_COLORS[(i < 0 ? userId : i) % PLAYER_COLORS.length];
+            },
+            avatarStyle(userId) {
+                const c = this.colorFor(userId);
+                return `background:${c}22;border:1px solid ${c}55;color:${c}`;
+            },
             myRole: 'VIEWER',
             members: [],
-            statsData: null,
-            chartInstance: null,
             showInviteModal: false,
             inviteUsername: '',
             inviting: false,
@@ -461,12 +401,7 @@
                         data.forEach(game => {
                             game.expanded = false;
                             // Clasificación de la partida con el mismo criterio que el ranking de la sala
-                            const value = sc => sc.score + 5 * sc.spares + 10 * sc.strikes;
-                            game.scores.sort((a, b) => value(b) - value(a) || b.score - a.score);
-                            game.scores.forEach((sc, i) => {
-                                const prev = game.scores[i - 1];
-                                sc.rank = prev && value(prev) === value(sc) ? prev.rank : i + 1;
-                            });
+                            game.scores = BowlingStats.gameRanking(game);
                             game.winner = game.scores[0];
                             // A game is detailed if AT LEAST ONE score has frames_data
                             game.isDetailed = game.scores.some(sc => sc.frames_data && sc.frames_data.length > 0);
@@ -476,137 +411,6 @@
                 } catch (e) {
                     console.error(e);
                 }
-            },
-            async loadStatsChart() {
-                if (this.statsData) return; // Ya cargado
-                try {
-                    const res = await fetch(`/api/rooms/${this.roomId}/stats`, {
-                        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-                    });
-                    if (res.ok) {
-                        this.statsData = await res.json();
-                        this.renderChart();
-                    }
-                } catch (e) {
-                    console.error("Error al cargar stats:", e);
-                }
-            },
-            renderChart() {
-                const ctx = document.getElementById('statsChart').getContext('2d');
-                if (this.chartInstance) {
-                    this.chartInstance.destroy();
-                }
-
-                // Custom neon colors mapping
-                const colors = [
-                    '#8b5cf6', // primary purple
-                    '#ec4899', // pink
-                    '#06b6d4', // cyan
-                    '#10b981', // green
-                    '#f59e0b', // amber
-                    '#ef4444', // red
-                    '#3b82f6'  // blue
-                ];
-
-                const datasets = this.statsData.players.map((player, index) => {
-                    const color = colors[index % colors.length];
-
-                    // create gradient fill
-                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    gradient.addColorStop(0, color + '66'); // 40% opacity
-                    gradient.addColorStop(1, color + '00'); // 0% opacity
-
-                    return {
-                        label: player.username,
-                        data: player.scores,
-                        borderColor: color,
-                        backgroundColor: gradient,
-                        borderWidth: 3,
-                        tension: 0.4,
-                        spanGaps: true,
-                        pointBackgroundColor: '#1c1e26', // match surface
-                        pointBorderColor: color,
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointHoverBackgroundColor: color,
-                        fill: true,
-                        customDetails: player.details
-                    };
-                });
-
-                Chart.defaults.color = '#9ca3af'; // gray-400
-                Chart.defaults.font.family = 'Inter, sans-serif';
-
-                this.chartInstance = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: this.statsData.labels,
-                        datasets: datasets
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: {
-                            mode: 'index',
-                            intersect: false,
-                        },
-                        plugins: {
-                            legend: {
-                                position: 'top',
-                                labels: {
-                                    usePointStyle: true,
-                                    boxWidth: 8,
-                                    padding: 20
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: '#0b0c10',
-                                titleColor: '#f3f4f6',
-                                bodyColor: '#d1d5db',
-                                borderColor: '#1f2937',
-                                borderWidth: 1,
-                                padding: 12,
-                                cornerRadius: 8,
-                                callbacks: {
-                                    label: function (context) {
-                                        let label = context.dataset.label || '';
-                                        if (label) {
-                                            label += ': ';
-                                        }
-                                        if (context.parsed.y !== null) {
-                                            label += context.parsed.y + ' pts';
-                                        }
-                                        return label;
-                                    },
-                                    afterLabel: function (context) {
-                                        const details = context.dataset.customDetails[context.dataIndex];
-                                        if (details) {
-                                            return `Plenos: ${details.strikes} | Semiplenos: ${details.spares}`;
-                                        }
-                                        return '';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                grid: {
-                                    color: '#1f2937', // gray-800
-                                    drawBorder: false
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                max: 300,
-                                grid: {
-                                    color: '#1f2937', // gray-800
-                                    drawBorder: false
-                                }
-                            }
-                        }
-                    }
-                });
             },
             async inviteUser() {
                 this.inviting = true;

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+import math
 from typing import List, Literal
 from .. import models, schemas, auth, database
 from sqlalchemy import func, desc, asc
@@ -9,6 +10,11 @@ router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 # Ranking: media = (puntos + 5 por semipleno + 10 por pleno) / partidas jugadas
 STRIKE_BONUS = 10
 SPARE_BONUS = 5
+
+
+def round1(x: float) -> float:
+    """Redondeo a un decimal hacia arriba en los empates (2,45 → 2,5), igual que en la web."""
+    return math.floor(x * 10 + 0.5) / 10
 
 
 def game_value(score: int, strikes: int, spares: int) -> int:
@@ -36,8 +42,38 @@ def count_wins(games) -> dict:
     return wins
 
 
+# Hándicap como en las ligas de bolos: 90 % de lo que te falta para 200 de media
+HANDICAP_BASE = 200
+HANDICAP_PCT = 0.9
+
+
+def handicap_for(average: float) -> int:
+    return int(math.floor(HANDICAP_PCT * max(0, HANDICAP_BASE - average) + 0.5))
+
+
+def compute_handicaps(games) -> dict:
+    """Para cada jugador: hándicap actual y media de (puntos + hándicap).
+
+    Cada partida usa el hándicap calculado con las partidas anteriores del jugador en la sala,
+    así que lo que cuenta es superar tu propia media. La primera partida va sin hándicap.
+    """
+    history, adjusted = {}, {}
+    for game in sorted(games, key=lambda g: (g.played_at, g.id)):
+        for sc in game.scores:
+            prev = history.setdefault(sc.user_id, [])
+            hcp = handicap_for(sum(prev) / len(prev)) if prev else 0
+            adjusted.setdefault(sc.user_id, []).append(sc.score + hcp)
+            prev.append(sc.score)
+    return {
+        uid: {"handicap": handicap_for(sum(pts) / len(pts)),
+              "handicap_average": round1(sum(adjusted[uid]) / len(adjusted[uid]))}
+        for uid, pts in history.items()
+    }
+
+
 # Tops de la sala: campo por el que se ordena cada uno
-LEADERBOARD_FIELDS = {"average": "average", "strikes": "total_strikes", "spares": "total_spares", "wins": "wins"}
+LEADERBOARD_FIELDS = {"average": "average", "strikes": "total_strikes", "spares": "total_spares",
+                      "wins": "wins", "handicap": "handicap_average"}
 
 @router.post("", response_model=schemas.RoomResponse)
 def create_room(room: schemas.RoomCreate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
@@ -114,7 +150,7 @@ def update_room_member(room_id: int, user_id: int, member_data: schemas.RoomMemb
     return target_member
 
 @router.get("/{room_id}/leaderboard", response_model=List[schemas.LeaderboardEntry])
-def get_room_leaderboard(room_id: int, by: Literal["average", "strikes", "spares", "wins"] = "average", current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+def get_room_leaderboard(room_id: int, by: Literal["average", "strikes", "spares", "wins", "handicap"] = "average", current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
     # Check access
     membership = db.query(models.RoomMember).filter(models.RoomMember.room_id == room_id, models.RoomMember.user_id == current_user.id).first()
     if not membership:
@@ -131,7 +167,9 @@ def get_room_leaderboard(room_id: int, by: Literal["average", "strikes", "spares
      .filter(models.Game.room_id == room_id)\
      .group_by(models.GameScore.user_id).all()
     stats_map = {r.user_id: r for r in results}
-    wins = count_wins(db.query(models.Game).filter(models.Game.room_id == room_id).all())
+    room_games = db.query(models.Game).filter(models.Game.room_id == room_id).all()
+    wins = count_wins(room_games)
+    handicaps = compute_handicaps(room_games)
 
     # Todos los miembros, también los que aún no han jugado
     members = db.query(models.User).join(models.RoomMember).filter(models.RoomMember.room_id == room_id).all()
@@ -147,11 +185,13 @@ def get_room_leaderboard(room_id: int, by: Literal["average", "strikes", "spares
             "user_id": member.id,
             "full_name": member.full_name,
             "games_played": games,
-            "average": round(ranking_average(score, strikes, spares, games), 1),
+            "average": round1(ranking_average(score, strikes, spares, games)),
             "total_score": score,
             "total_strikes": strikes,
             "total_spares": spares,
             "wins": wins.get(member.id, 0),
+            "handicap": handicaps.get(member.id, {}).get("handicap", 0),
+            "handicap_average": handicaps.get(member.id, {}).get("handicap_average", 0.0),
             "rank": None,
         })
 
@@ -262,25 +302,24 @@ def get_room_stats(room_id: int, current_user: models.User = Depends(auth.get_cu
                 max_strike_avg = avg
                 strike_king = {
                     "username": players_data[m_id]["username"],
-                    "avg_strikes": round(avg, 1),
+                    "avg_strikes": round1(avg),
                     "total_strikes": stats["strikes"]
                 }
                 
-    # Most Fit (Improvement in last 3 played games)
+    # Más en forma: quien más supera su propia media en las últimas 3 partidas (mínimo 4 partidas)
     most_fit = None
-    max_improvement = -9999
     for m_id, pdata in players_data.items():
         real_scores = pdata["real_scores"]
-        if len(real_scores) >= 2:
-            # Check last 3 or less
-            recent = real_scores[-3:]
-            improvement = recent[-1] - recent[0]
-            if improvement > max_improvement:
-                max_improvement = improvement
+        if len(real_scores) >= 4:
+            last3 = sum(real_scores[-3:]) / 3
+            overall = sum(real_scores) / len(real_scores)
+            improvement = round1(last3 - overall)
+            if most_fit is None or improvement > most_fit["improvement"]:
                 most_fit = {
                     "username": pdata["username"],
                     "improvement": improvement,
-                    "last_score": recent[-1]
+                    "last3_average": round1(last3),
+                    "average": round1(overall),
                 }
                 
     players_result = []

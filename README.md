@@ -26,8 +26,14 @@ Aplicación web para apuntar las partidas de bolos que juegas con tus amigos: cr
   - **Puntuación**: `(puntos + 5 por semipleno + 10 por pleno) ÷ partidas jugadas`, para que quien juega menos partidas pero mejores no quede por detrás.
   - **Plenos** y **Semiplenos**: total conseguido en la sala.
   - **Victorias**: partidas ganadas (gana quien más puntos + 5 por semipleno + 10 por pleno hace en la partida; no cuentan las partidas de un solo jugador).
+  - **Hándicap**: media de puntos + hándicap, que es el 90 % de lo que a cada uno le falta para 200 de media según sus partidas anteriores. Premia superar tu propia media.
 - **Historial** de partidas, con el marcador frame a frame de las registradas en modo detallado.
-- **Estadísticas**: récord de la sala, *Rey del pleno* (más plenos por partida), jugador *Más en forma* y gráfico con la evolución de las puntuaciones.
+- **Estadísticas** de la sala, filtrables por periodo (todo, últimas 10, últimas 5, este mes):
+  - **Resumen**: récord, rey del pleno, más en forma (las 3 últimas partidas frente a su media), más plenos y semiplenos en una partida, más partidas, mayor mejora de un mes a otro, peor partida y rachas (victorias seguidas y partidas por encima de la media).
+  - **Evolución**: gráfica de puntuaciones o de tendencia con cada jugador en su color, «Solo yo», récord y media de la sala marcados, y la clasificación de la partida que se toque; carrera del ranking, victorias acumuladas y media por mes.
+  - **Jugadores**: ficha de cada jugador (media, mejor y peor partida, regularidad, tendencia, victorias, distribución de puntuaciones), cara a cara entre dos jugadores, y plenos y semiplenos por partida.
+  - **Noches**: calendario de noches de bolos, ganador y clasificación de cada noche, e imagen para compartir el resumen (por ejemplo, en WhatsApp).
+- **Logros** en el perfil: primera partida, club de los 200, turkey, partida limpia, primera victoria…
 - **Motes**: en cada partida se puede otorgar un mote a un jugador, que queda guardado en su perfil.
 - **Perfil** con los totales del jugador y los motes que ha ido ganando.
 - **Cuentas de usuario**: registro, inicio de sesión con JWT, contraseñas cifradas con bcrypt y recuperación de contraseña por correo (enlace de un solo uso válido 20 minutos, como mucho uno por minuto). Al cambiar la contraseña se cierran las sesiones abiertas.
@@ -92,18 +98,22 @@ Además de las páginas, el backend expone una API REST bajo `/api`. FastAPI gen
 | `POST` | `/api/auth/forgot-password` | Pedir el enlace de recuperación |
 | `POST` | `/api/auth/reset-password` | Establecer una nueva contraseña |
 | `GET` | `/api/users/me` | Perfil, totales y motes del usuario |
+| `PATCH` | `/api/users/me` | Editar nombre, usuario, correo y teléfono |
+| `POST` | `/api/users/me/password-reset` | Enviar al correo un enlace para cambiar la contraseña |
+| `GET` | `/api/users/me/achievements` | Logros del usuario |
 | `GET` `POST` | `/api/rooms` | Listar mis salas / crear una sala |
 | `GET` | `/api/rooms/{id}` | Datos de una sala |
 | `GET` `POST` | `/api/rooms/{id}/members` | Listar / añadir miembros |
 | `PATCH` | `/api/rooms/{id}/members/{user_id}` | Cambiar el rol de un miembro |
 | `GET` `POST` | `/api/rooms/{id}/games` | Historial / registrar una partida |
-| `GET` | `/api/rooms/{id}/leaderboard?by=average\|strikes\|spares\|wins` | Tops de la sala |
+| `GET` | `/api/rooms/{id}/leaderboard?by=average\|strikes\|spares\|wins\|handicap` | Tops de la sala |
 | `GET` | `/api/rooms/{id}/stats` | Récords y evolución de puntuaciones |
 
 ## Tests
 
 ```bash
-pytest
+pytest                          # backend
+node --test tests/js/*.test.js  # cálculos de las estadísticas (app/static/js/stats.js)
 ```
 
 Los tests cubren el registro e inicio de sesión, las salas y el ranking, el guardado de partidas detalladas, las estadísticas y el flujo de recuperación de contraseña. Se ejecutan automáticamente en cada *push* con GitHub Actions.
