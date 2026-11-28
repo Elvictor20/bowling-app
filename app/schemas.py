@@ -66,6 +66,16 @@ class UserUpdate(BaseModel):
 class UserUpdateResponse(UserResponse):
     access_token: str  # el token va ligado al usuario, así que se renueva al guardar
 
+class Achievement(BaseModel):
+    id: str
+    icon: str
+    title: str
+    description: str
+    unlocked: bool
+    unlocked_at: Optional[datetime] = None
+    progress: int
+    goal: int
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -160,6 +170,8 @@ class LeaderboardEntry(BaseModel):
     total_strikes: int
     total_spares: int
     wins: int
+    handicap: int
+    handicap_average: float
 
 class PlayerStatEntry(BaseModel):
     user_id: int

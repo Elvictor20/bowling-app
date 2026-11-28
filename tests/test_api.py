@@ -195,8 +195,8 @@ def test_perfect_game_and_history():
     
     assert stats["records"]["highest_score"]["score"] == 300
     assert stats["records"]["strike_king"]["total_strikes"] == 12
-    # Most fit requires 2 games, it went from 300 to 150, so improvement is -150
-    assert stats["records"]["most_fit"]["improvement"] == -150
+    # «Más en forma» pide al menos 4 partidas
+    assert stats["records"]["most_fit"] is None
 
 def test_password_recovery_flow(sent_resets):
     # Setup user
@@ -486,3 +486,47 @@ def test_reset_email_uses_app_url_and_escapes_names(monkeypatch):
     text, html = sent[0]
     assert "https://bolos.example/reset-password?token=TOKEN123" in text
     assert '<a href="http://malo">' not in html and "&lt;a href=" in html
+
+
+def test_most_fit_compares_last_three_with_own_average():
+    room_id, headers = _setup_room_with_two_players()
+    for s in (100, 110, 160, 170, 180):          # media 144, últimas 3 = 170 → +26
+        _play(room_id, headers, [{"user_id": 1, "score": s}])
+    for s in (200, 200, 190, 180):               # media 192,5, últimas 3 = 190 → -2,5
+        _play(room_id, headers, [{"user_id": 2, "score": s}])
+    fit = client.get(f"/api/rooms/{room_id}/stats", headers=headers).json()["records"]["most_fit"]
+    assert fit["username"] == "A" and fit["improvement"] == 26.0
+
+
+def test_handicap_top_rewards_beating_your_own_average():
+    room_id, headers = _setup_room_with_two_players()
+    # A siempre hace 200 (hándicap 0). B suele hacer 100 y un día hace 150: con hándicap le supera
+    _play(room_id, headers, [{"user_id": 1, "score": 200}, {"user_id": 2, "score": 100}])
+    _play(room_id, headers, [{"user_id": 1, "score": 200}, {"user_id": 2, "score": 150}])
+    lb = {e["user_id"]: e for e in client.get(f"/api/rooms/{room_id}/leaderboard?by=handicap", headers=headers).json()}
+    # B: 1.ª partida sin hándicap (100); 2.ª con 90 % de (200 - 100) = 90 → 240. Media 170
+    assert lb[2]["handicap_average"] == 170.0 and lb[1]["handicap_average"] == 200.0
+    # Hándicap actual de B con media 125: 90 % de 75 = 67,5 → 68
+    assert lb[2]["handicap"] == 68 and lb[1]["handicap"] == 0
+    assert [e["user_id"] for e in client.get(f"/api/rooms/{room_id}/leaderboard?by=handicap", headers=headers).json()] == [1, 2]
+
+
+def test_achievements_unlock_with_dates_and_progress():
+    room_id, headers = _setup_room_with_two_players()
+    frames = [{"roll1": "X", "roll2": "", "roll3": ""}] * 3 + [{"roll1": "9", "roll2": "/", "roll3": ""}] * 6 + [{"roll1": "8", "roll2": "/", "roll3": "7"}]
+    _play(room_id, headers, [{"user_id": 1, "score": 205, "strikes": 3, "spares": 7, "frames_data": frames},
+                             {"user_id": 2, "score": 120, "strikes": 1, "spares": 2}])
+    ach = {a["id"]: a for a in client.get("/api/users/me/achievements", headers=headers).json()}
+    for aid in ("first_game", "score_150", "score_200", "spares_5", "turkey", "clean", "win_1"):
+        assert ach[aid]["unlocked"] and ach[aid]["unlocked_at"], aid
+    for aid in ("score_250", "perfect", "strikes_5", "games_10", "win_10"):
+        assert not ach[aid]["unlocked"], aid
+    assert ach["games_10"]["progress"] == 1 and ach["games_10"]["goal"] == 10
+    assert ach["strikes_5"]["progress"] == 3
+
+
+def test_solo_games_do_not_count_as_wins_for_achievements():
+    room_id, headers = _setup_room_with_two_players()
+    _play(room_id, headers, [{"user_id": 1, "score": 150}])
+    ach = {a["id"]: a for a in client.get("/api/users/me/achievements", headers=headers).json()}
+    assert not ach["win_1"]["unlocked"]

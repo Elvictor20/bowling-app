@@ -2,6 +2,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth, database
 from .auth import require_emails, start_password_reset
+from ..achievements import compute_achievements
+from typing import List
 from sqlalchemy import func
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -29,6 +31,10 @@ def get_user_me(current_user: models.User = Depends(auth.get_current_user), db: 
         total_spares=stats.total_spares or 0,
         nicknames=nicknames
     )
+
+@router.get("/me/achievements", response_model=List[schemas.Achievement])
+def get_my_achievements(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
+    return compute_achievements(current_user.id, db)
 
 @router.patch("/me", response_model=schemas.UserUpdateResponse)
 def update_user_me(data: schemas.UserUpdate, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
